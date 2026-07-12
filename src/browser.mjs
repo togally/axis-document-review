@@ -17,11 +17,13 @@ const state = {
   catalog: null,
   selectedProject: null,
   selectedDocument: null,
+  activeSourceId: null,
   selectedType: 'all',
   query: '',
   content: '',
   documentTitles: new Map(),
   titleLoads: new Set(),
+  documentLoadSequence: 0,
 };
 
 const elements = {
@@ -32,10 +34,6 @@ const elements = {
   sourceSummary: document.querySelector('#sourceSummary'),
   catalogTree: document.querySelector('#catalogTree'),
   catalogCount: document.querySelector('#catalogCount'),
-  bucketMetric: document.querySelector('#bucketMetric'),
-  organizationMetric: document.querySelector('#organizationMetric'),
-  projectMetric: document.querySelector('#projectMetric'),
-  documentMetric: document.querySelector('#documentMetric'),
   breadcrumb: document.querySelector('#breadcrumb'),
   projectTitle: document.querySelector('#projectTitle'),
   lastRefresh: document.querySelector('#lastRefresh'),
@@ -205,43 +203,12 @@ function showToast(message) {
   showToast.timeout = window.setTimeout(() => elements.toast.classList.remove('show'), 2200);
 }
 
-function drillDown(metric) {
-  const selectors = {
-    buckets: '.tree-group .tree-summary',
-    organizations: '.organization-node .organization-label',
-    projects: '.project-node.active, .project-node',
-    documents: '.document-item.active, .document-item',
-  };
-  const labels = {
-    buckets: '存储桶目录',
-    organizations: '组织目录',
-    projects: '项目目录',
-    documents: '当前项目文档',
-  };
-  const target = document.querySelector(selectors[metric]);
-  if (!target) {
-    showToast(`${labels[metric]}暂无可定位内容`);
-    return;
-  }
-  target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-  target.classList.remove('drilldown-highlight');
-  window.requestAnimationFrame(() => target.classList.add('drilldown-highlight'));
-  if (typeof target.focus === 'function' && target.matches('button, [tabindex]')) target.focus({ preventScroll: true });
-  showToast(`已定位到${labels[metric]}`);
-}
-
 function setConnection(status, message) {
   elements.connectionState.className = `connection-state ${status}`;
   elements.connectionState.querySelector('span:last-child').textContent = message;
 }
 
-function renderMetrics() {
-  const totals = state.catalog?.totals;
-  elements.bucketMetric.textContent = totals?.buckets ?? '—';
-  elements.organizationMetric.textContent = totals?.organizations ?? '—';
-  elements.projectMetric.textContent = totals?.projects ?? '—';
-  elements.documentMetric.textContent = totals?.documents ?? '—';
-  elements.catalogCount.textContent = totals?.projects ?? 0;
+function renderCatalogSummary() {
   elements.lastRefresh.textContent = formatDate(state.catalog?.generated_at);
   elements.refreshDuration.textContent = state.catalog ? `${state.catalog.refresh.duration_ms} ms` : '—';
 }
@@ -251,26 +218,43 @@ function renderSources() {
   const healthy = sources.filter((source) => source.status === 'healthy').length;
   elements.sourceSummary.textContent = `${healthy} / ${sources.length}`;
   elements.sourceList.innerHTML = sources.map((source) => `
-    <div class="source-item ${source.status === 'error' ? 'error' : ''}" title="${escapeHtml(source.error || source.type)}">
+    <button class="source-item ${state.activeSourceId === source.id ? 'active' : ''} ${source.status === 'error' ? 'error' : ''}" type="button" data-source-id="${escapeHtml(source.id)}" aria-pressed="${state.activeSourceId === source.id}" title="${escapeHtml(source.error || source.type)}">
       <span class="source-indicator"></span>
       <span class="source-copy">
         <strong>${escapeHtml(source.label)}</strong>
         <small>${source.status === 'error' ? escapeHtml(source.error || '读取失败') : `${source.document_count} 篇 · ${source.duration_ms} ms`}</small>
       </span>
-    </div>
+    </button>
   `).join('');
+  elements.sourceList.querySelectorAll('[data-source-id]').forEach((button) => {
+    button.addEventListener('click', () => selectSource(button.dataset.sourceId));
+  });
 }
 
 function projectKey(bucket, organization, project) {
   return [bucket.name, organization.id, project.slug].map(encodeURIComponent).join('|');
 }
 
+function bucketsForActiveSource() {
+  return (state.catalog?.buckets ?? []).filter((bucket) => bucket.source_ids.includes(state.activeSourceId));
+}
+
+function firstProjectForActiveSource() {
+  for (const bucket of bucketsForActiveSource()) {
+    for (const organization of bucket.organizations) {
+      const project = organization.projects[0];
+      if (project) return { bucket, organization, project };
+    }
+  }
+  return null;
+}
+
 function renderCatalogTree() {
   const query = state.query.toLowerCase();
-  const buckets = state.catalog?.buckets ?? [];
+  const buckets = bucketsForActiveSource();
   const markup = [];
+  let visibleProjectCount = 0;
   for (const bucket of buckets) {
-    const organizationMarkup = [];
     for (const organization of bucket.organizations) {
       const projects = organization.projects.filter((project) => {
         if (!query) return true;
@@ -278,7 +262,8 @@ function renderCatalogTree() {
           .some((value) => value.toLowerCase().includes(query));
       });
       if (projects.length === 0) continue;
-      organizationMarkup.push(`
+      visibleProjectCount += projects.length;
+      markup.push(`
         <div class="organization-node">
           <div class="organization-label">${escapeHtml(organization.id)}</div>
           ${projects.map((project) => {
@@ -295,22 +280,41 @@ function renderCatalogTree() {
         </div>
       `);
     }
-    if (organizationMarkup.length === 0) continue;
-    markup.push(`
-      <div class="tree-group">
-        <div class="tree-summary">
-          <span class="tree-icon">▣</span>
-          <span class="tree-label">${escapeHtml(bucket.name)}</span>
-          <span class="tree-count">${bucket.document_count}</span>
-        </div>
-        ${organizationMarkup.join('')}
-      </div>
-    `);
   }
-  elements.catalogTree.innerHTML = markup.join('') || '<div class="empty-state compact"><p>没有匹配的项目</p></div>';
+  elements.catalogCount.textContent = visibleProjectCount;
+  elements.catalogTree.innerHTML = markup.join('') || '<div class="empty-state compact"><p>当前数据源没有匹配的项目</p></div>';
   elements.catalogTree.querySelectorAll('[data-project-key]').forEach((button) => {
     button.addEventListener('click', () => selectProject(button.dataset.projectKey));
   });
+}
+
+function clearProjectSelection() {
+  state.selectedProject = null;
+  state.selectedDocument = null;
+  state.content = '';
+  state.selectedType = 'all';
+  state.documentLoadSequence += 1;
+  elements.breadcrumb.textContent = '当前数据源暂无项目';
+  elements.projectTitle.textContent = '项目文档';
+  elements.projectDocumentCount.textContent = '0';
+  elements.typeFilters.innerHTML = '';
+  elements.documentList.innerHTML = '<div class="empty-state compact"><p>当前数据源暂无文档</p></div>';
+  elements.viewerPath.textContent = '未选择文档';
+  elements.viewerTitle.textContent = '选择文档开始查阅';
+  elements.viewerSource.textContent = '—';
+  elements.viewerMeta.innerHTML = '';
+  elements.viewerContent.innerHTML = '<div class="empty-state"><h4>当前数据源暂无可查阅文档</h4></div>';
+  elements.copyButton.disabled = true;
+}
+
+function selectSource(sourceId) {
+  if (!state.catalog?.sources.some((source) => source.id === sourceId)) return;
+  state.activeSourceId = sourceId;
+  clearProjectSelection();
+  renderSources();
+  renderCatalogTree();
+  const first = firstProjectForActiveSource();
+  if (first) selectProject(projectKey(first.bucket, first.organization, first.project));
 }
 
 function findProject(key) {
@@ -328,6 +332,11 @@ function selectProject(key, options = {}) {
   const selected = findProject(key);
   if (!selected) return;
   state.selectedProject = selected;
+  const projectSourceId = selected.project.documents[0]?.source_id ?? selected.bucket.source_ids[0];
+  if (projectSourceId && projectSourceId !== state.activeSourceId) {
+    state.activeSourceId = projectSourceId;
+    renderSources();
+  }
   const requestedDocument = options.preferredDocumentId
     ? selected.project.documents.find((documentRecord) => documentRecord.id === options.preferredDocumentId)
     : null;
@@ -420,11 +429,13 @@ async function renderViewer(documentRecord, content) {
 }
 
 async function loadDocument(documentId) {
+  const loadSequence = ++state.documentLoadSequence;
   elements.viewerContent.innerHTML = '<div class="loading-line"></div><div class="loading-line"></div><div class="loading-line"></div>';
   try {
     const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}`);
     if (!response.ok) throw new Error(`文档读取失败（${response.status}）`);
     const loaded = await response.json();
+    if (loadSequence !== state.documentLoadSequence) return;
     state.selectedDocument = loaded.document;
     state.content = loaded.content;
     if (fileType(loaded.document) === DEFAULT_DOCUMENT_TYPE) {
@@ -436,6 +447,7 @@ async function loadDocument(documentId) {
     url.searchParams.set('document', loaded.document.id);
     window.history.replaceState({}, '', url);
   } catch (error) {
+    if (loadSequence !== state.documentLoadSequence) return;
     elements.viewerContent.innerHTML = `<div class="empty-state"><h4>无法读取文档</h4><p>${escapeHtml(error.message)}</p></div>`;
     showToast(error.message);
   }
@@ -448,6 +460,10 @@ function selectInitialProject() {
       for (const organization of bucket.organizations) {
         for (const project of organization.projects) {
           if (project.documents.some((document) => document.id === requestedDocumentId)) {
+            const requestedDocument = project.documents.find((document) => document.id === requestedDocumentId);
+            state.activeSourceId = requestedDocument?.source_id ?? bucket.source_ids[0];
+            renderSources();
+            renderCatalogTree();
             selectProject(projectKey(bucket, organization, project), {
               keepDocument: true,
               preferredDocumentId: requestedDocumentId,
@@ -459,18 +475,22 @@ function selectInitialProject() {
       }
     }
   }
-  const preferred = (state.catalog?.buckets ?? []).find((bucket) => bucket.name !== 'local-workspace')
-    || state.catalog?.buckets?.[0];
-  const organization = preferred?.organizations?.[0];
-  const project = organization?.projects?.[0];
-  if (preferred && organization && project) selectProject(projectKey(preferred, organization, project));
+  const first = firstProjectForActiveSource();
+  if (first) selectProject(projectKey(first.bucket, first.organization, first.project));
+  else clearProjectSelection();
 }
 
 function applyCatalog(catalog, preserveSelection = false) {
   const previousProjectKey = state.selectedProject?.key;
   const previousDocumentId = state.selectedDocument?.id;
   state.catalog = catalog;
-  renderMetrics();
+  if (!catalog.sources.some((source) => source.id === state.activeSourceId)) {
+    state.activeSourceId = catalog.sources.find((source) => source.type === 'aliyun-oss' && source.status === 'healthy')?.id
+      ?? catalog.sources.find((source) => source.status === 'healthy')?.id
+      ?? catalog.sources[0]?.id
+      ?? null;
+  }
+  renderCatalogSummary();
   renderSources();
   renderCatalogTree();
   const status = catalog.refresh.status;
@@ -508,9 +528,6 @@ async function refreshCatalog() {
 }
 
 elements.refreshButton.addEventListener('click', refreshCatalog);
-document.querySelectorAll('[data-drilldown]').forEach((button) => {
-  button.addEventListener('click', () => drillDown(button.dataset.drilldown));
-});
 elements.globalSearch.addEventListener('input', (event) => {
   state.query = event.target.value.trim();
   renderCatalogTree();

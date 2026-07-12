@@ -12,15 +12,15 @@ const browserSourcePath = existsSync(path.join(root, 'src', 'browser.mjs'))
 const browserSource = await readFile(browserSourcePath, 'utf8');
 const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 
-for (const target of ['buckets', 'organizations', 'projects', 'documents']) {
-  assert.match(
-    html,
-    new RegExp(`<button[^>]+class="metric-card[^"]*"[^>]+data-drilldown="${target}"`),
-    `${target} metric should be an interactive drill-down button`,
-  );
-}
-assert.match(browserSource, /\[data-drilldown\]/);
-assert.match(browserSource, /scrollIntoView/);
+assert.doesNotMatch(html, /overview-strip|bucketMetric|organizationMetric|projectMetric|documentMetric/);
+assert.doesNotMatch(css, /\.overview-strip|\.metric-card/);
+assert.match(browserSource, /activeSourceId/);
+assert.match(browserSource, /selectSource/);
+assert.match(browserSource, /<button class="source-item/);
+assert.match(browserSource, /data-source-id/);
+assert.match(browserSource, /bucket\.source_ids\.includes\(state\.activeSourceId\)/);
+assert.doesNotMatch(browserSource, /tree-summary/);
+assert.match(css, /\.source-item\.active/);
 
 assert.match(css, /\.document-workbench\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)/s);
 assert.match(css, /\.viewer-panel\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s);

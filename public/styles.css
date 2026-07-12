@@ -102,8 +102,7 @@ button {
 }
 
 .eyebrow,
-.section-label,
-.metric-label {
+.section-label {
   margin: 0;
   color: var(--muted);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -287,11 +286,34 @@ kbd {
 }
 
 .source-item {
+  width: 100%;
   min-width: 0;
   padding: 9px 10px;
   gap: 9px;
+  color: inherit;
+  border: 1px solid transparent;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  text-align: left;
+  transition: 150ms ease;
+}
+
+.source-item:hover,
+.source-item:focus-visible {
+  border-color: var(--line-bright);
+  outline: none;
+  background: var(--surface-raised);
+}
+
+.source-item.active {
+  border-color: rgba(214, 255, 69, 0.38);
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.source-item.active .source-indicator {
+  box-shadow: 0 0 10px var(--success);
 }
 
 .source-indicator {
@@ -332,30 +354,6 @@ kbd {
 
 .catalog-tree {
   margin-top: 18px;
-}
-
-.tree-group {
-  margin-bottom: 8px;
-}
-
-.tree-summary {
-  width: 100%;
-  min-height: 38px;
-  padding: 7px 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted-bright);
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-}
-
-.tree-summary:hover {
-  color: var(--text);
-  background: var(--surface-raised);
 }
 
 .tree-icon {
@@ -421,62 +419,11 @@ kbd {
 .content-panel {
   min-width: 0;
   min-height: 0;
+  height: calc(100vh - 76px);
   padding: 24px 26px 28px;
-}
-
-.overview-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
-  gap: 10px;
-}
-
-.metric-card {
-  width: 100%;
-  min-height: 96px;
-  padding: 15px 17px;
-  color: inherit;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: linear-gradient(145deg, rgba(22, 29, 40, 0.82), rgba(13, 18, 26, 0.78));
-  box-shadow: var(--shadow);
-  cursor: pointer;
-  text-align: left;
-  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
-}
-
-.metric-card:hover,
-.metric-card:focus-visible {
-  border-color: var(--cyan);
-  outline: none;
-  transform: translateY(-2px);
-  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.34), 0 0 0 3px rgba(103, 232, 249, 0.08);
-}
-
-.metric-card strong,
-.metric-card small {
-  display: block;
-}
-
-.metric-card strong {
-  margin-top: 6px;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 25px;
-  letter-spacing: -0.05em;
-}
-
-.metric-card small {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.metric-card-accent {
-  border-color: rgba(214, 255, 69, 0.25);
-  background: linear-gradient(145deg, rgba(214, 255, 69, 0.1), rgba(14, 20, 25, 0.9));
-}
-
-.metric-card-accent strong {
-  color: var(--accent);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .context-bar {
@@ -513,8 +460,9 @@ kbd {
 }
 
 .document-workbench {
-  height: calc(100vh - 76px - 24px - 96px - 76px - 28px);
+  height: auto;
   min-height: 520px;
+  flex: 1;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   grid-template-columns: minmax(250px, 32%) minmax(0, 1fr);
@@ -1004,11 +952,9 @@ body.viewer-fullscreen-fallback {
   }
 
   .content-panel {
+    height: auto;
     padding: 16px;
-  }
-
-  .overview-strip {
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    overflow: visible;
   }
 
   .document-workbench {
@@ -1044,10 +990,6 @@ body.viewer-fullscreen-fallback {
 
   .topbar-actions .button span {
     font-size: 18px;
-  }
-
-  .overview-strip {
-    grid-template-columns: 1fr 1fr;
   }
 
   .viewer-header {
