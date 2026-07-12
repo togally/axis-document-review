@@ -59,26 +59,26 @@
 
         <section class="content-panel">
           <div class="overview-strip" aria-label="目录指标">
-            <article class="metric-card">
+            <button class="metric-card" data-drilldown="buckets" type="button" aria-label="查看存储桶目录">
               <span class="metric-label">BUCKETS</span>
               <strong id="bucketMetric">—</strong>
               <small>存储桶</small>
-            </article>
-            <article class="metric-card">
+            </button>
+            <button class="metric-card" data-drilldown="organizations" type="button" aria-label="查看组织目录">
               <span class="metric-label">ORGANIZATIONS</span>
               <strong id="organizationMetric">—</strong>
               <small>组织</small>
-            </article>
-            <article class="metric-card">
+            </button>
+            <button class="metric-card" data-drilldown="projects" type="button" aria-label="查看项目目录">
               <span class="metric-label">PROJECTS</span>
               <strong id="projectMetric">—</strong>
               <small>项目</small>
-            </article>
-            <article class="metric-card metric-card-accent">
+            </button>
+            <button class="metric-card metric-card-accent" data-drilldown="documents" type="button" aria-label="查看当前项目文档">
               <span class="metric-label">DOCUMENTS</span>
               <strong id="documentMetric">—</strong>
               <small>可查阅文档</small>
-            </article>
+            </button>
           </div>
 
           <div class="context-bar">

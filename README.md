@@ -2,12 +2,16 @@
 
 Axis 项目文档的本地只读观测与评审页面。它按 `bucket / organization / project` 聚合本地 `.axis/docs` 与阿里云 OSS 项目文档，并在浏览器中查看 Markdown、YAML、JSON、文本和 CSV。
 
+阅读器使用本地打包的 `marked`、`DOMPurify`、`Mermaid` 和 `highlight.js`：支持 GFM Markdown、表格、流程图/状态图以及常见代码格式高亮，不依赖公网 CDN。
+
 ## 启动
 
 ```bash
 npm install
 npm start -- --repo /path/to/project --open
 ```
+
+顶部 Bucket、组织、项目、文档指标卡可点击下钻；文档阅读区使用独立滚动容器，可通过滚轮、触控板或滚动条查看全文。
 
 默认监听 `http://127.0.0.1:4177`。可使用 `--source local` 或 `--source oss` 限定数据源，也可用 `--host`、`--port` 调整地址。
 

@@ -1,6 +1,6 @@
 {
   "name": "axis-document-review",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first read-only review console for Axis project documents",
   "type": "module",
   "license": "MIT",
@@ -8,11 +8,19 @@
     "axis-document-review": "./src/cli.mjs"
   },
   "scripts": {
+    "build:web": "esbuild src/browser.mjs --bundle --minify --format=iife --platform=browser --target=es2022 --outfile=public/app.js",
+    "prestart": "npm run build:web",
     "start": "node src/cli.mjs",
-    "test": "node tests/document-review.test.mjs"
+    "pretest": "npm run build:web",
+    "test": "node tests/document-review.test.mjs && node tests/ui-regression.test.mjs"
   },
   "dependencies": {
     "ali-oss": "^6.23.0",
+    "dompurify": "^3.2.6",
+    "esbuild": "^0.25.6",
+    "highlight.js": "^11.11.1",
+    "marked": "^16.1.1",
+    "mermaid": "^11.9.0",
     "yaml": "^2.8.0"
   },
   "engines": {

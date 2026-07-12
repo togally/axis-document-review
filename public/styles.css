@@ -420,6 +420,7 @@ kbd {
 
 .content-panel {
   min-width: 0;
+  min-height: 0;
   padding: 24px 26px 28px;
 }
 
@@ -430,12 +431,25 @@ kbd {
 }
 
 .metric-card {
+  width: 100%;
   min-height: 96px;
   padding: 15px 17px;
+  color: inherit;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: linear-gradient(145deg, rgba(22, 29, 40, 0.82), rgba(13, 18, 26, 0.78));
   box-shadow: var(--shadow);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.metric-card:hover,
+.metric-card:focus-visible {
+  border-color: var(--cyan);
+  outline: none;
+  transform: translateY(-2px);
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.34), 0 0 0 3px rgba(103, 232, 249, 0.08);
 }
 
 .metric-card strong,
@@ -502,6 +516,7 @@ kbd {
   height: calc(100vh - 76px - 24px - 96px - 76px - 28px);
   min-height: 520px;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   grid-template-columns: minmax(250px, 32%) minmax(0, 1fr);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -512,9 +527,11 @@ kbd {
 
 .document-list-panel {
   min-width: 0;
+  min-height: 0;
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .document-list-header {
@@ -621,6 +638,8 @@ kbd {
 
 .viewer-panel {
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background: #0c1118;
@@ -692,7 +711,35 @@ kbd {
   flex: 1;
   padding: 28px clamp(22px, 5vw, 70px) 64px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   line-height: 1.72;
+}
+
+.mermaid {
+  margin: 20px 0;
+  padding: 18px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #070a0f;
+  text-align: center;
+}
+
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-error {
+  color: var(--danger);
+  border-color: rgba(251, 113, 133, 0.35);
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.drilldown-highlight {
+  animation: drilldown-highlight 900ms ease;
 }
 
 .viewer-content h1,
@@ -861,6 +908,11 @@ kbd {
 
 @keyframes shimmer {
   to { background-position: -220% 0; }
+}
+
+@keyframes drilldown-highlight {
+  0%, 100% { box-shadow: none; }
+  35% { box-shadow: 0 0 0 3px rgba(214, 255, 69, 0.32); }
 }
 
 @media (max-width: 1050px) {

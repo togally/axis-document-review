@@ -1,3 +1,16 @@
+import DOMPurify from 'dompurify';
+import hljs from 'highlight.js';
+import { marked } from 'marked';
+import mermaid from 'mermaid';
+
+marked.setOptions({ gfm: true, breaks: false });
+mermaid.initialize({
+  startOnLoad: false,
+  securityLevel: 'strict',
+  theme: 'dark',
+  fontFamily: 'Inter, PingFang SC, Microsoft YaHei, sans-serif',
+});
+
 const state = {
   catalog: null,
   selectedProject: null,
@@ -44,104 +57,36 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
-function renderInline(value) {
-  return escapeHtml(value)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-}
-
-function tableCells(line) {
-  return line.trim().replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim());
-}
-
-function isTableSeparator(line) {
-  return /^\s*\|?\s*:?-{3,}/.test(line) && line.includes('|');
-}
-
 function renderMarkdown(markdown) {
-  const lines = markdown.replaceAll('\r\n', '\n').split('\n');
-  const output = [];
-  let index = 0;
-  let inCode = false;
-  let codeLanguage = '';
-  let codeLines = [];
-  let listType = null;
+  return DOMPurify.sanitize(marked.parse(markdown));
+}
 
-  const closeList = () => {
-    if (listType) output.push(`</${listType}>`);
-    listType = null;
-  };
-
-  while (index < lines.length) {
-    const line = lines[index];
-    if (line.startsWith('```')) {
-      closeList();
-      if (!inCode) {
-        inCode = true;
-        codeLanguage = line.slice(3).trim();
-        codeLines = [];
-      } else {
-        output.push(`<pre data-language="${escapeHtml(codeLanguage)}"><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
-        inCode = false;
-      }
-      index += 1;
-      continue;
-    }
-    if (inCode) {
-      codeLines.push(line);
-      index += 1;
-      continue;
-    }
-    if (index + 1 < lines.length && line.includes('|') && isTableSeparator(lines[index + 1])) {
-      closeList();
-      const headers = tableCells(line);
-      index += 2;
-      const rows = [];
-      while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
-        rows.push(tableCells(lines[index]));
-        index += 1;
-      }
-      output.push('<div class="table-wrap"><table><thead><tr>');
-      output.push(headers.map((cell) => `<th>${renderInline(cell)}</th>`).join(''));
-      output.push('</tr></thead><tbody>');
-      for (const row of rows) {
-        output.push(`<tr>${row.map((cell) => `<td>${renderInline(cell)}</td>`).join('')}</tr>`);
-      }
-      output.push('</tbody></table></div>');
-      continue;
-    }
-    const heading = /^(#{1,4})\s+(.+)$/.exec(line);
-    if (heading) {
-      closeList();
-      const level = heading[1].length;
-      output.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
-      index += 1;
-      continue;
-    }
-    const unordered = /^\s*[-*]\s+(.+)$/.exec(line);
-    const ordered = /^\s*\d+\.\s+(.+)$/.exec(line);
-    if (unordered || ordered) {
-      const nextListType = unordered ? 'ul' : 'ol';
-      if (listType !== nextListType) {
-        closeList();
-        listType = nextListType;
-        output.push(`<${listType}>`);
-      }
-      output.push(`<li>${renderInline((unordered || ordered)[1])}</li>`);
-      index += 1;
-      continue;
-    }
-    closeList();
-    if (line.startsWith('>')) {
-      output.push(`<blockquote>${renderInline(line.replace(/^>\s?/, ''))}</blockquote>`);
-    } else if (line.trim()) {
-      output.push(`<p>${renderInline(line)}</p>`);
-    }
-    index += 1;
+function languageFor(documentRecord) {
+  const extension = documentRecord.path.split('.').at(-1)?.toLowerCase();
+  if (extension === 'yml') return 'yaml';
+  if (['json', 'yaml', 'xml', 'html', 'css', 'javascript', 'typescript', 'java', 'sql', 'bash'].includes(extension)) {
+    return extension;
   }
-  closeList();
-  if (inCode) output.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
-  return output.join('\n');
+  return '';
+}
+
+async function enhanceRenderedContent() {
+  const diagramBlocks = [...elements.viewerContent.querySelectorAll('pre > code.language-mermaid')];
+  for (const code of diagramBlocks) {
+    const diagram = document.createElement('div');
+    diagram.className = 'mermaid';
+    diagram.textContent = code.textContent;
+    code.parentElement.replaceWith(diagram);
+    try {
+      await mermaid.run({ nodes: [diagram] });
+    } catch (error) {
+      diagram.className = 'mermaid diagram-error';
+      diagram.textContent = `流程图解析失败\n\n${code.textContent}\n\n${error.message}`;
+    }
+  }
+  elements.viewerContent.querySelectorAll('pre > code:not(.language-mermaid)').forEach((code) => {
+    hljs.highlightElement(code);
+  });
 }
 
 function formatDate(value) {
@@ -175,6 +120,31 @@ function showToast(message) {
   elements.toast.classList.add('show');
   window.clearTimeout(showToast.timeout);
   showToast.timeout = window.setTimeout(() => elements.toast.classList.remove('show'), 2200);
+}
+
+function drillDown(metric) {
+  const selectors = {
+    buckets: '.tree-group .tree-summary',
+    organizations: '.organization-node .organization-label',
+    projects: '.project-node.active, .project-node',
+    documents: '.document-item.active, .document-item',
+  };
+  const labels = {
+    buckets: '存储桶目录',
+    organizations: '组织目录',
+    projects: '项目目录',
+    documents: '当前项目文档',
+  };
+  const target = document.querySelector(selectors[metric]);
+  if (!target) {
+    showToast(`${labels[metric]}暂无可定位内容`);
+    return;
+  }
+  target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  target.classList.remove('drilldown-highlight');
+  window.requestAnimationFrame(() => target.classList.add('drilldown-highlight'));
+  if (typeof target.focus === 'function' && target.matches('button, [tabindex]')) target.focus({ preventScroll: true });
+  showToast(`已定位到${labels[metric]}`);
 }
 
 function setConnection(status, message) {
@@ -329,7 +299,7 @@ function renderDocumentList() {
   });
 }
 
-function renderViewer(documentRecord, content) {
+async function renderViewer(documentRecord, content) {
   elements.viewerPath.textContent = `${documentRecord.bucket} / ${documentRecord.organizationId} / ${documentRecord.projectSlug} / ${documentRecord.path}`;
   elements.viewerTitle.textContent = documentRecord.name;
   elements.viewerSource.textContent = documentRecord.source_label;
@@ -338,9 +308,20 @@ function renderViewer(documentRecord, content) {
     <span>${formatBytes(documentRecord.size)}</span>
     <span>${formatDate(documentRecord.updatedAt)}</span>
   `;
-  elements.viewerContent.innerHTML = documentRecord.mediaType === 'text/markdown'
-    ? renderMarkdown(content)
-    : `<pre class="raw-document"><code>${escapeHtml(content)}</code></pre>`;
+  if (documentRecord.mediaType === 'text/markdown') {
+    elements.viewerContent.innerHTML = renderMarkdown(content);
+  } else {
+    const pre = document.createElement('pre');
+    pre.className = 'raw-document';
+    const code = document.createElement('code');
+    const language = languageFor(documentRecord);
+    if (language) code.className = `language-${language}`;
+    code.textContent = content;
+    pre.append(code);
+    elements.viewerContent.replaceChildren(pre);
+  }
+  await enhanceRenderedContent();
+  elements.viewerContent.scrollTop = 0;
   elements.copyButton.disabled = false;
 }
 
@@ -353,7 +334,7 @@ async function loadDocument(documentId) {
     state.selectedDocument = loaded.document;
     state.content = loaded.content;
     renderDocumentList();
-    renderViewer(loaded.document, loaded.content);
+    await renderViewer(loaded.document, loaded.content);
     const url = new URL(window.location.href);
     url.searchParams.set('document', loaded.document.id);
     window.history.replaceState({}, '', url);
@@ -427,6 +408,9 @@ async function refreshCatalog() {
 }
 
 elements.refreshButton.addEventListener('click', refreshCatalog);
+document.querySelectorAll('[data-drilldown]').forEach((button) => {
+  button.addEventListener('click', () => drillDown(button.dataset.drilldown));
+});
 elements.globalSearch.addEventListener('input', (event) => {
   state.query = event.target.value.trim();
   renderCatalogTree();
