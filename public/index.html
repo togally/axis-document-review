@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Axis 文档评审台</title>
+    <meta name="description" content="按 Bucket、组织和项目观测与查阅 Axis 项目知识文档。" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <span class="brand-mark" aria-hidden="true">A</span>
+          <div>
+            <p class="eyebrow">AXIS / PROJECT KNOWLEDGE</p>
+            <h1>文档评审台</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="connection-state" id="connectionState" role="status">
+            <span class="status-dot"></span>
+            <span>正在连接本地服务</span>
+          </div>
+          <button class="button button-secondary" id="refreshButton" type="button">
+            <span aria-hidden="true">↻</span>
+            刷新目录
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="navigation-panel" aria-label="文档目录导航">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">CATALOG</p>
+              <h2>存储与项目</h2>
+            </div>
+            <span class="count-badge" id="catalogCount">0</span>
+          </div>
+
+          <label class="search-box" for="globalSearch">
+            <span aria-hidden="true">⌕</span>
+            <input id="globalSearch" type="search" placeholder="搜索 Bucket、项目或文档" autocomplete="off" />
+            <kbd>⌘ K</kbd>
+          </label>
+
+          <section class="source-status" aria-labelledby="sourceStatusTitle">
+            <div class="subheading-row">
+              <h3 id="sourceStatusTitle">数据源</h3>
+              <span id="sourceSummary">0 / 0</span>
+            </div>
+            <div id="sourceList" class="source-list"></div>
+          </section>
+
+          <nav id="catalogTree" class="catalog-tree" aria-label="Bucket、组织与项目"></nav>
+        </aside>
+
+        <section class="content-panel">
+          <div class="overview-strip" aria-label="目录指标">
+            <article class="metric-card">
+              <span class="metric-label">BUCKETS</span>
+              <strong id="bucketMetric">—</strong>
+              <small>存储桶</small>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">ORGANIZATIONS</span>
+              <strong id="organizationMetric">—</strong>
+              <small>组织</small>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">PROJECTS</span>
+              <strong id="projectMetric">—</strong>
+              <small>项目</small>
+            </article>
+            <article class="metric-card metric-card-accent">
+              <span class="metric-label">DOCUMENTS</span>
+              <strong id="documentMetric">—</strong>
+              <small>可查阅文档</small>
+            </article>
+          </div>
+
+          <div class="context-bar">
+            <div>
+              <p class="breadcrumb" id="breadcrumb">请选择一个项目</p>
+              <h2 id="projectTitle">项目文档</h2>
+            </div>
+            <div class="refresh-meta">
+              <span>最后刷新</span>
+              <strong id="lastRefresh">—</strong>
+              <span id="refreshDuration">—</span>
+            </div>
+          </div>
+
+          <div class="document-workbench">
+            <section class="document-list-panel" aria-labelledby="documentListTitle">
+              <div class="document-list-header">
+                <div>
+                  <p class="section-label">DOCUMENTS</p>
+                  <h3 id="documentListTitle">文档列表</h3>
+                </div>
+                <span class="count-badge" id="projectDocumentCount">0</span>
+              </div>
+              <div class="filter-row" id="typeFilters" aria-label="文档类型筛选"></div>
+              <div id="documentList" class="document-list">
+                <div class="empty-state compact">
+                  <span aria-hidden="true">◎</span>
+                  <p>从左侧选择一个项目</p>
+                </div>
+              </div>
+            </section>
+
+            <article class="viewer-panel" aria-labelledby="viewerTitle">
+              <header class="viewer-header">
+                <div class="viewer-title-block">
+                  <p class="viewer-path" id="viewerPath">未选择文档</p>
+                  <h3 id="viewerTitle">选择文档开始查阅</h3>
+                </div>
+                <div class="viewer-actions">
+                  <span class="source-pill" id="viewerSource">—</span>
+                  <button class="icon-button" id="copyButton" type="button" title="复制文档内容" disabled>复制</button>
+                </div>
+              </header>
+              <div class="viewer-meta" id="viewerMeta"></div>
+              <div class="viewer-content" id="viewerContent">
+                <div class="empty-state">
+                  <span class="empty-glyph" aria-hidden="true">◇</span>
+                  <h4>知识文档就绪后会显示在这里</h4>
+                  <p>目录按 Bucket → 组织 → 项目组织，页面只通过本地只读服务获取内容。</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

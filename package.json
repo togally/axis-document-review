@@ -1,0 +1,21 @@
+{
+  "name": "axis-document-review",
+  "version": "0.1.0",
+  "description": "Local-first read-only review console for Axis project documents",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "axis-document-review": "./src/cli.mjs"
+  },
+  "scripts": {
+    "start": "node src/cli.mjs",
+    "test": "node tests/document-review.test.mjs"
+  },
+  "dependencies": {
+    "ali-oss": "^6.23.0",
+    "yaml": "^2.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
