@@ -331,6 +331,7 @@ function findProject(key) {
 function selectProject(key, options = {}) {
   const selected = findProject(key);
   if (!selected) return;
+  const projectChanged = state.selectedProject?.key !== key;
   state.selectedProject = selected;
   const projectSourceId = selected.project.documents[0]?.source_id ?? selected.bucket.source_ids[0];
   if (projectSourceId && projectSourceId !== state.activeSourceId) {
@@ -352,8 +353,9 @@ function selectProject(key, options = {}) {
   elements.projectTitle.textContent = selected.project.slug;
   renderCatalogTree();
   renderDocumentList();
+  if (projectChanged) elements.documentList.scrollTop = 0;
   void hydrateDocumentTitles(selected.project.documents, selected.key, defaultDocument?.id);
-  if (!options.keepDocument && defaultDocument) loadDocument(defaultDocument.id);
+  if (!options.keepDocument && defaultDocument) loadDocument(defaultDocument.id, { resetList: projectChanged });
 }
 
 function filteredDocuments() {
@@ -428,7 +430,7 @@ async function renderViewer(documentRecord, content) {
   elements.copyButton.disabled = false;
 }
 
-async function loadDocument(documentId) {
+async function loadDocument(documentId, options = {}) {
   const loadSequence = ++state.documentLoadSequence;
   elements.viewerContent.innerHTML = '<div class="loading-line"></div><div class="loading-line"></div><div class="loading-line"></div>';
   try {
@@ -442,6 +444,7 @@ async function loadDocument(documentId) {
       state.documentTitles.set(loaded.document.id, extractDocumentTitle(loaded.content, loaded.document.name));
     }
     renderDocumentList();
+    if (options.resetList) elements.documentList.scrollTop = 0;
     await renderViewer(loaded.document, loaded.content);
     const url = new URL(window.location.href);
     url.searchParams.set('document', loaded.document.id);

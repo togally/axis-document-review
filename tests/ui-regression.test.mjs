@@ -19,10 +19,20 @@ assert.match(browserSource, /selectSource/);
 assert.match(browserSource, /<button class="source-item/);
 assert.match(browserSource, /data-source-id/);
 assert.match(browserSource, /bucket\.source_ids\.includes\(state\.activeSourceId\)/);
+assert.match(browserSource, /elements\.documentList\.scrollTop\s*=\s*0/);
+assert.match(browserSource, /loadDocument\(defaultDocument\.id,\s*\{\s*resetList:\s*projectChanged\s*\}\)/);
+assert.match(browserSource, /if \(options\.resetList\) elements\.documentList\.scrollTop\s*=\s*0/);
 assert.doesNotMatch(browserSource, /tree-summary/);
 assert.match(css, /\.source-item\.active/);
 
-assert.match(css, /\.document-workbench\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)/s);
+const navigationMarkup = html.match(/<aside[^>]+class="navigation-panel"[\s\S]*?<\/aside>/)?.[0] ?? '';
+const contentMarkup = html.match(/<section class="content-panel">[\s\S]*?<\/section>\s*<\/main>/)?.[0] ?? '';
+assert.match(navigationMarkup, /class="document-list-panel navigation-documents"/);
+assert.doesNotMatch(contentMarkup, /document-list-panel/);
+assert.match(css, /\.workspace\s*\{[^}]*grid-template-columns:\s*330px\s+minmax\(0,\s*1fr\)/s);
+assert.match(css, /\.navigation-panel\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*overflow:\s*hidden/s);
+assert.match(css, /\.document-workbench\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+assert.match(css, /\.navigation-documents\s*\{[^}]*min-height:\s*0[^}]*flex:\s*1/s);
 assert.match(css, /\.viewer-panel\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s);
 assert.match(css, /\.viewer-content\s*\{[^}]*overflow-y:\s*auto[^}]*overscroll-behavior:\s*contain/s);
 

@@ -55,6 +55,23 @@
           </section>
 
           <nav id="catalogTree" class="catalog-tree" aria-label="当前数据源的组织与项目"></nav>
+
+          <section class="document-list-panel navigation-documents" aria-labelledby="documentListTitle">
+            <div class="document-list-header">
+              <div>
+                <p class="section-label">DOCUMENTS</p>
+                <h3 id="documentListTitle">文档列表</h3>
+              </div>
+              <span class="count-badge" id="projectDocumentCount">0</span>
+            </div>
+            <div class="filter-row" id="typeFilters" aria-label="文档类型筛选"></div>
+            <div id="documentList" class="document-list">
+              <div class="empty-state compact">
+                <span aria-hidden="true">◎</span>
+                <p>请选择一个项目</p>
+              </div>
+            </div>
+          </section>
         </aside>
 
         <section class="content-panel">
@@ -71,23 +88,6 @@
           </div>
 
           <div class="document-workbench">
-            <section class="document-list-panel" aria-labelledby="documentListTitle">
-              <div class="document-list-header">
-                <div>
-                  <p class="section-label">DOCUMENTS</p>
-                  <h3 id="documentListTitle">文档列表</h3>
-                </div>
-                <span class="count-badge" id="projectDocumentCount">0</span>
-              </div>
-              <div class="filter-row" id="typeFilters" aria-label="文档类型筛选"></div>
-              <div id="documentList" class="document-list">
-                <div class="empty-state compact">
-                  <span aria-hidden="true">◎</span>
-                  <p>从左侧选择一个项目</p>
-                </div>
-              </div>
-            </section>
-
             <article class="viewer-panel" aria-labelledby="viewerTitle">
               <header class="viewer-header">
                 <div class="viewer-title-block">
