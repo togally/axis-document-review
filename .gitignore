@@ -2,5 +2,7 @@ node_modules/
 .axis-runtime/
 .playwright-cli/
 /public/app.js
+/output/
+/design-qa.md
 .DS_Store
 npm-debug.log*

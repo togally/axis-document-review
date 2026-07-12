@@ -11,6 +11,8 @@ mermaid.initialize({
   fontFamily: 'Inter, PingFang SC, Microsoft YaHei, sans-serif',
 });
 
+const DEFAULT_DOCUMENT_TYPE = 'MD';
+
 const state = {
   catalog: null,
   selectedProject: null,
@@ -18,6 +20,8 @@ const state = {
   selectedType: 'all',
   query: '',
   content: '',
+  documentTitles: new Map(),
+  titleLoads: new Set(),
 };
 
 const elements = {
@@ -44,6 +48,8 @@ const elements = {
   viewerSource: document.querySelector('#viewerSource'),
   viewerMeta: document.querySelector('#viewerMeta'),
   viewerContent: document.querySelector('#viewerContent'),
+  viewerPanel: document.querySelector('.viewer-panel'),
+  fullscreenButton: document.querySelector('#fullscreenButton'),
   copyButton: document.querySelector('#copyButton'),
   toast: document.querySelector('#toast'),
 };
@@ -87,6 +93,42 @@ async function enhanceRenderedContent() {
   elements.viewerContent.querySelectorAll('pre > code:not(.language-mermaid)').forEach((code) => {
     hljs.highlightElement(code);
   });
+  enhanceDocumentLinks();
+}
+
+function referencedDocument(reference) {
+  const normalized = reference.trim().replace(/^\.\//, '').replaceAll('\\', '/').split('#', 1)[0];
+  return state.selectedProject?.project.documents.find((documentRecord) => documentRecord.path === normalized) ?? null;
+}
+
+function connectDocumentLink(link, documentRecord) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('document', documentRecord.id);
+  link.href = url;
+  link.dataset.documentTarget = documentRecord.id;
+  link.title = `打开：${documentDisplayTitle(documentRecord)}`;
+  link.addEventListener('click', async (event) => {
+    event.preventDefault();
+    state.selectedType = fileType(documentRecord);
+    renderDocumentList();
+    await loadDocument(documentRecord.id);
+  });
+}
+
+function enhanceDocumentLinks() {
+  elements.viewerContent.querySelectorAll('code:not(pre code)').forEach((code) => {
+    const documentRecord = referencedDocument(code.textContent);
+    if (!documentRecord) return;
+    const link = document.createElement('a');
+    link.className = 'document-link';
+    link.textContent = code.textContent;
+    connectDocumentLink(link, documentRecord);
+    code.replaceWith(link);
+  });
+  elements.viewerContent.querySelectorAll('a[href]:not([data-document-target])').forEach((link) => {
+    const documentRecord = referencedDocument(link.getAttribute('href'));
+    if (documentRecord) connectDocumentLink(link, documentRecord);
+  });
 }
 
 function formatDate(value) {
@@ -113,6 +155,47 @@ function fileType(documentRecord) {
   if (['md', 'markdown'].includes(extension)) return 'MD';
   if (['yaml', 'yml'].includes(extension)) return 'YAML';
   return extension.toUpperCase();
+}
+
+function extractDocumentTitle(content, fallback = '未命名文档') {
+  const heading = /^\s*#\s+(.+?)\s*$/m.exec(content)?.[1];
+  if (!heading) return fallback;
+  return heading
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+    .replace(/[`*_~]/g, '')
+    .trim() || fallback;
+}
+
+function documentDisplayTitle(documentRecord) {
+  if (state.documentTitles.has(documentRecord.id)) return state.documentTitles.get(documentRecord.id);
+  return fileType(documentRecord) === DEFAULT_DOCUMENT_TYPE ? '正在读取标题…' : `${fileType(documentRecord)} 文档`;
+}
+
+async function hydrateDocumentTitles(documents, projectKeyAtStart, excludedId = null) {
+  const queue = documents.filter((documentRecord) => (
+    fileType(documentRecord) === DEFAULT_DOCUMENT_TYPE
+    && documentRecord.id !== excludedId
+    && !state.documentTitles.has(documentRecord.id)
+    && !state.titleLoads.has(documentRecord.id)
+  ));
+  for (const documentRecord of queue) state.titleLoads.add(documentRecord.id);
+  const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const documentRecord = queue.shift();
+      try {
+        const response = await fetch(`/api/documents/${encodeURIComponent(documentRecord.id)}`);
+        if (!response.ok) throw new Error(`title request failed: ${response.status}`);
+        const loaded = await response.json();
+        state.documentTitles.set(documentRecord.id, extractDocumentTitle(loaded.content, documentRecord.name));
+      } catch {
+        state.documentTitles.set(documentRecord.id, documentRecord.name);
+      } finally {
+        state.titleLoads.delete(documentRecord.id);
+      }
+    }
+  });
+  await Promise.all(workers);
+  if (state.selectedProject?.key === projectKeyAtStart) renderDocumentList();
 }
 
 function showToast(message) {
@@ -245,12 +328,23 @@ function selectProject(key, options = {}) {
   const selected = findProject(key);
   if (!selected) return;
   state.selectedProject = selected;
-  state.selectedType = 'all';
+  const requestedDocument = options.preferredDocumentId
+    ? selected.project.documents.find((documentRecord) => documentRecord.id === options.preferredDocumentId)
+    : null;
+  const defaultDocument = requestedDocument
+    ?? selected.project.documents.find((documentRecord) => fileType(documentRecord) === DEFAULT_DOCUMENT_TYPE)
+    ?? selected.project.documents[0];
+  state.selectedType = requestedDocument
+    ? fileType(requestedDocument)
+    : selected.project.documents.some((documentRecord) => fileType(documentRecord) === DEFAULT_DOCUMENT_TYPE)
+      ? DEFAULT_DOCUMENT_TYPE
+      : 'all';
   elements.breadcrumb.textContent = `${selected.bucket.name} / ${selected.organization.id}`;
   elements.projectTitle.textContent = selected.project.slug;
   renderCatalogTree();
   renderDocumentList();
-  if (!options.keepDocument && selected.project.documents.length > 0) loadDocument(selected.project.documents[0].id);
+  void hydrateDocumentTitles(selected.project.documents, selected.key, defaultDocument?.id);
+  if (!options.keepDocument && defaultDocument) loadDocument(defaultDocument.id);
 }
 
 function filteredDocuments() {
@@ -258,7 +352,7 @@ function filteredDocuments() {
   const query = state.query.toLowerCase();
   return documents.filter((document) => {
     const matchesType = state.selectedType === 'all' || fileType(document) === state.selectedType;
-    const matchesQuery = !query || [document.path, document.source_label, document.name]
+    const matchesQuery = !query || [document.path, document.source_label, document.name, documentDisplayTitle(document)]
       .some((value) => value.toLowerCase().includes(query));
     return matchesType && matchesQuery;
   });
@@ -286,11 +380,11 @@ function renderDocumentList() {
   elements.projectDocumentCount.textContent = total;
   renderTypeFilters();
   elements.documentList.innerHTML = documents.map((document) => `
-    <button class="document-item ${state.selectedDocument?.id === document.id ? 'active' : ''}" type="button" data-document-id="${document.id}">
+    <button class="document-item ${state.selectedDocument?.id === document.id ? 'active' : ''}" type="button" data-document-id="${document.id}" title="${escapeHtml(document.path)}">
       <span class="file-icon">${fileType(document)}</span>
       <span class="document-copy">
         <strong>${escapeHtml(document.name)}</strong>
-        <small>${escapeHtml(document.path)}</small>
+        <small class="document-title">${escapeHtml(documentDisplayTitle(document))}</small>
       </span>
     </button>
   `).join('') || '<div class="empty-state compact"><p>当前筛选下没有文档</p></div>';
@@ -333,6 +427,9 @@ async function loadDocument(documentId) {
     const loaded = await response.json();
     state.selectedDocument = loaded.document;
     state.content = loaded.content;
+    if (fileType(loaded.document) === DEFAULT_DOCUMENT_TYPE) {
+      state.documentTitles.set(loaded.document.id, extractDocumentTitle(loaded.content, loaded.document.name));
+    }
     renderDocumentList();
     await renderViewer(loaded.document, loaded.content);
     const url = new URL(window.location.href);
@@ -351,7 +448,10 @@ function selectInitialProject() {
       for (const organization of bucket.organizations) {
         for (const project of organization.projects) {
           if (project.documents.some((document) => document.id === requestedDocumentId)) {
-            selectProject(projectKey(bucket, organization, project), { keepDocument: true });
+            selectProject(projectKey(bucket, organization, project), {
+              keepDocument: true,
+              preferredDocumentId: requestedDocumentId,
+            });
             loadDocument(requestedDocumentId);
             return;
           }
@@ -421,6 +521,44 @@ elements.copyButton.addEventListener('click', async () => {
   await navigator.clipboard.writeText(state.content);
   showToast('文档内容已复制');
 });
+
+function setFallbackFullscreen(active) {
+  elements.viewerPanel.classList.toggle('fullscreen-fallback', active);
+  document.body.classList.toggle('viewer-fullscreen-fallback', active);
+}
+
+function syncFullscreenState() {
+  const nativeFullscreen = document.fullscreenElement === elements.viewerPanel;
+  if (nativeFullscreen) setFallbackFullscreen(false);
+  const fallbackFullscreen = elements.viewerPanel.classList.contains('fullscreen-fallback');
+  const active = nativeFullscreen || fallbackFullscreen;
+  elements.fullscreenButton.textContent = active ? '退出全屏' : '全屏';
+  elements.fullscreenButton.title = active ? '退出全屏预览' : '全屏预览文档';
+  elements.fullscreenButton.setAttribute('aria-pressed', String(active));
+}
+
+async function toggleFullscreen() {
+  try {
+    if (elements.viewerPanel.classList.contains('fullscreen-fallback')) {
+      setFallbackFullscreen(false);
+      syncFullscreenState();
+    } else if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else if (elements.viewerPanel.requestFullscreen) {
+      await elements.viewerPanel.requestFullscreen();
+    } else {
+      setFallbackFullscreen(true);
+      syncFullscreenState();
+    }
+  } catch (error) {
+    setFallbackFullscreen(true);
+    syncFullscreenState();
+    showToast(`浏览器未允许原生全屏，已切换沉浸预览：${error.message}`);
+  }
+}
+
+elements.fullscreenButton.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', syncFullscreenState);
 window.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();

@@ -632,8 +632,13 @@ kbd {
 .document-copy small {
   margin-top: 4px;
   color: var(--muted);
-  font-family: monospace;
-  font-size: 9px;
+  font-size: 10px;
+}
+
+.document-copy .document-title {
+  color: var(--muted);
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  letter-spacing: 0.01em;
 }
 
 .viewer-panel {
@@ -643,6 +648,32 @@ kbd {
   display: flex;
   flex-direction: column;
   background: #0c1118;
+}
+
+.viewer-panel:fullscreen,
+.viewer-panel.fullscreen-fallback {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  border: 0;
+  border-radius: 0;
+  background: #0c1118;
+}
+
+.viewer-panel.fullscreen-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+body.viewer-fullscreen-fallback {
+  overflow: hidden;
+}
+
+.viewer-panel:fullscreen .viewer-header,
+.viewer-panel.fullscreen-fallback .viewer-header {
+  min-height: 74px;
+  padding-inline: 26px;
 }
 
 .viewer-header {
@@ -676,6 +707,7 @@ kbd {
 
 .viewer-actions {
   gap: 8px;
+  flex: 0 0 auto;
 }
 
 .source-pill {
@@ -694,6 +726,7 @@ kbd {
   min-height: 30px;
   padding: 0 10px;
   font-size: 10px;
+  white-space: nowrap;
 }
 
 .viewer-meta {
@@ -782,6 +815,28 @@ kbd {
   background: rgba(103, 232, 249, 0.06);
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 0.9em;
+}
+
+.document-link {
+  display: inline;
+  padding: 2px 5px;
+  color: var(--cyan);
+  border: 1px solid rgba(103, 232, 249, 0.22);
+  border-radius: 4px;
+  background: rgba(103, 232, 249, 0.08);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.9em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: 150ms ease;
+}
+
+.document-link:hover,
+.document-link:focus-visible {
+  color: var(--accent);
+  border-color: rgba(214, 255, 69, 0.45);
+  background: var(--accent-soft);
+  outline: none;
 }
 
 .viewer-content pre {
@@ -922,6 +977,10 @@ kbd {
 
   .document-workbench {
     grid-template-columns: minmax(220px, 38%) minmax(0, 1fr);
+  }
+
+  .viewer-actions .source-pill {
+    display: none;
   }
 }
 

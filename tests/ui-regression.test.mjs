@@ -36,3 +36,15 @@ assert.match(browserSource, /from ['"]highlight\.js['"]/);
 assert.match(browserSource, /DOMPurify\.sanitize/);
 assert.match(browserSource, /mermaid\.run/);
 assert.match(browserSource, /highlightElement/);
+
+assert.match(html, /id="fullscreenButton"/);
+assert.match(browserSource, /DEFAULT_DOCUMENT_TYPE\s*=\s*['"]MD['"]/);
+assert.match(browserSource, /extractDocumentTitle/);
+assert.match(browserSource, /hydrateDocumentTitles/);
+assert.match(browserSource, /document-title/);
+assert.match(browserSource, /document-link/);
+assert.match(browserSource, /requestFullscreen/);
+assert.match(browserSource, /fullscreenchange/);
+assert.match(browserSource, /catch \(error\) \{[\s\S]*setFallbackFullscreen\(true\)/);
+assert.match(css, /\.viewer-panel:fullscreen/);
+assert.match(css, /\.icon-button\s*\{[^}]*white-space:\s*nowrap/s);
