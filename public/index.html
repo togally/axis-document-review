@@ -75,32 +75,25 @@
         </aside>
 
         <section class="content-panel">
-          <div class="context-bar">
-            <div>
-              <p class="breadcrumb" id="breadcrumb">请选择一个项目</p>
-              <h2 id="projectTitle">项目文档</h2>
-            </div>
-            <div class="refresh-meta">
-              <span>最后刷新</span>
-              <strong id="lastRefresh">—</strong>
-              <span id="refreshDuration">—</span>
-            </div>
-          </div>
-
           <div class="document-workbench">
             <article class="viewer-panel" aria-labelledby="viewerTitle">
               <header class="viewer-header">
                 <div class="viewer-title-block">
                   <p class="viewer-path" id="viewerPath">未选择文档</p>
                   <h3 id="viewerTitle">选择文档开始查阅</h3>
+                  <div class="viewer-meta" id="viewerMeta"></div>
                 </div>
                 <div class="viewer-actions">
+                  <div class="refresh-meta" aria-label="目录刷新信息">
+                    <span>最后刷新</span>
+                    <strong id="lastRefresh">—</strong>
+                    <span id="refreshDuration">—</span>
+                  </div>
                   <span class="source-pill" id="viewerSource">—</span>
                   <button class="icon-button" id="fullscreenButton" type="button" title="全屏预览文档" aria-pressed="false">全屏</button>
                   <button class="icon-button" id="copyButton" type="button" title="复制文档内容" disabled>复制</button>
                 </div>
               </header>
-              <div class="viewer-meta" id="viewerMeta"></div>
               <div class="viewer-content" id="viewerContent">
                 <div class="empty-state">
                   <span class="empty-glyph" aria-hidden="true">◇</span>

@@ -34,8 +34,6 @@ const elements = {
   sourceSummary: document.querySelector('#sourceSummary'),
   catalogTree: document.querySelector('#catalogTree'),
   catalogCount: document.querySelector('#catalogCount'),
-  breadcrumb: document.querySelector('#breadcrumb'),
-  projectTitle: document.querySelector('#projectTitle'),
   lastRefresh: document.querySelector('#lastRefresh'),
   refreshDuration: document.querySelector('#refreshDuration'),
   projectDocumentCount: document.querySelector('#projectDocumentCount'),
@@ -265,14 +263,15 @@ function renderCatalogTree() {
       visibleProjectCount += projects.length;
       markup.push(`
         <div class="organization-node">
-          <div class="organization-label">${escapeHtml(organization.id)}</div>
           ${projects.map((project) => {
             const key = projectKey(bucket, organization, project);
             const active = state.selectedProject?.key === key ? 'active' : '';
             return `
               <button class="project-node ${active}" type="button" data-project-key="${escapeHtml(key)}">
-                <span class="tree-icon">└</span>
-                <span class="tree-label">${escapeHtml(project.slug)}</span>
+                <span class="project-context">
+                  <small class="organization-id">${escapeHtml(organization.id)}</small>
+                  <strong class="tree-label">${escapeHtml(project.slug)}</strong>
+                </span>
                 <span class="tree-count">${project.document_count}</span>
               </button>
             `;
@@ -294,8 +293,6 @@ function clearProjectSelection() {
   state.content = '';
   state.selectedType = 'all';
   state.documentLoadSequence += 1;
-  elements.breadcrumb.textContent = '当前数据源暂无项目';
-  elements.projectTitle.textContent = '项目文档';
   elements.projectDocumentCount.textContent = '0';
   elements.typeFilters.innerHTML = '';
   elements.documentList.innerHTML = '<div class="empty-state compact"><p>当前数据源暂无文档</p></div>';
@@ -349,8 +346,6 @@ function selectProject(key, options = {}) {
     : selected.project.documents.some((documentRecord) => fileType(documentRecord) === DEFAULT_DOCUMENT_TYPE)
       ? DEFAULT_DOCUMENT_TYPE
       : 'all';
-  elements.breadcrumb.textContent = `${selected.bucket.name} / ${selected.organization.id}`;
-  elements.projectTitle.textContent = selected.project.slug;
   renderCatalogTree();
   renderDocumentList();
   if (projectChanged) elements.documentList.scrollTop = 0;

@@ -36,6 +36,14 @@ assert.match(css, /\.navigation-documents\s*\{[^}]*min-height:\s*0[^}]*flex:\s*1
 assert.match(css, /\.viewer-panel\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s);
 assert.match(css, /\.viewer-content\s*\{[^}]*overflow-y:\s*auto[^}]*overscroll-behavior:\s*contain/s);
 
+assert.doesNotMatch(html, /class="context-bar"|id="breadcrumb"|id="projectTitle"/);
+assert.match(html, /<header class="viewer-header">[\s\S]*id="viewerPath"[\s\S]*id="viewerTitle"[\s\S]*id="viewerMeta"[\s\S]*id="lastRefresh"[\s\S]*<\/header>/);
+assert.doesNotMatch(browserSource, /elements\.breadcrumb|elements\.projectTitle/);
+assert.match(browserSource, /class="project-context"/);
+assert.match(browserSource, /class="organization-id"/);
+assert.doesNotMatch(browserSource, /organization-label|tree-icon/);
+assert.doesNotMatch(css, /\.context-bar|\.organization-label|\.tree-icon/);
+
 for (const dependency of ['dompurify', 'highlight.js', 'marked', 'mermaid']) {
   assert.ok(packageJson.dependencies?.[dependency], `${dependency} should be a local runtime dependency`);
 }
