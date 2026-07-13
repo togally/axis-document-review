@@ -17,7 +17,9 @@ npm start -- --repo /path/to/project --open
 
 项目目录使用扁平的“组织 + 项目”行，文档路径、文件名、文件元信息、刷新时间和操作按钮集中在同一个紧凑文档头中。
 
-项目默认筛选并打开 Markdown 文档。文件列表以“文件名 + Markdown 一级标题”展示；正文中指向当前项目其他文档的路径可直接点击跳转，阅读器支持全屏预览。
+项目默认筛选并打开 Markdown 文档。文件列表以“文件名 + Markdown 一级标题”展示；能力总览和二级能力设计按父子树折叠。业务架构可进入各能力总览，能力总览可进入二级详细设计；阅读器提供返回上级、上一个和下一个同级文档。正文中的项目内路径也可直接点击跳转，阅读器支持全屏预览。
+
+当前文档从 `.axis/docs/orgs/` 进入默认目录。修订快照从 `.axis/docs/_archive/orgs/` 读取，独立保存在项目 `archives` 中，只通过当前文档头部的“历史追溯”按钮展示；历史版本不会进入当前文档列表、搜索计数或默认打开逻辑。历史面板显示 revision、存档时间、修改原因和内容哈希，并提供“返回当前版本”。
 
 默认监听 `http://127.0.0.1:4177`。可使用 `--source local` 或 `--source oss` 限定数据源，也可用 `--host`、`--port` 调整地址。
 
@@ -37,7 +39,7 @@ OSS 配置来自目标项目的 `.axis/config.yml` 与组织注册表；访问�
 }
 ```
 
-`listDocuments()` 返回的每项必须包含 `bucket`、`organizationId`、`projectSlug`、`path`、`locator`、`mediaType`、`size` 和 `updatedAt`。服务端统一生成稳定文档 ID，并通过 `/api/catalog`、`/api/documents/:id`、`/api/health`、`/api/metrics` 暴露只读 API。
+`listDocuments()` 返回的每项必须包含 `bucket`、`organizationId`、`projectSlug`、`path`、`locator`、`mediaType`、`size` 和 `updatedAt`。存档项还需要 `is_archive: true`、`canonical_path`、revision 和追溯元数据。服务端统一生成稳定文档 ID，并通过 `/api/catalog`、`/api/documents/:id`、`/api/health`、`/api/metrics` 暴露只读 API。
 
 ## 安全边界
 

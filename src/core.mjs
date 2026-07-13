@@ -60,6 +60,74 @@ function latestTimestamp(documents) {
         .sort();
     return timestamps.at(-1) ?? null;
 }
+
+function capabilityOverviewMatch(documentPath) {
+    return /^business\/capabilities\/([^/]+)\/detailed-design\.md$/.exec(documentPath);
+}
+
+function secondaryCapabilityMatch(documentPath) {
+    return /^business\/capabilities\/([^/]+)\/secondary-capabilities\/([^/]+)\/detailed-design\.md$/.exec(documentPath);
+}
+
+function applyProjectDocumentNavigation(documents) {
+    const businessArchitecture = documents.find((document) => document.path === 'architecture/business.md') ?? null;
+    const capabilityOverviews = documents
+        .filter((document) => capabilityOverviewMatch(document.path))
+        .sort((left, right) => left.path.localeCompare(right.path));
+    const secondaryByCapability = new Map();
+    for (const document of documents) {
+        const match = secondaryCapabilityMatch(document.path);
+        if (!match) continue;
+        const children = secondaryByCapability.get(match[1]) ?? [];
+        children.push(document);
+        secondaryByCapability.set(match[1], children);
+    }
+    for (const children of secondaryByCapability.values()) {
+        children.sort((left, right) => left.path.localeCompare(right.path));
+    }
+    for (const document of documents) {
+        document.navigation = {
+            role: 'document',
+            business_architecture_id: businessArchitecture?.id ?? null,
+            capability_overview_id: null,
+            previous_peer_id: null,
+            next_peer_id: null,
+            child_ids: [],
+        };
+    }
+    if (businessArchitecture) {
+        businessArchitecture.navigation.role = 'business_architecture';
+        businessArchitecture.navigation.business_architecture_id = businessArchitecture.id;
+        businessArchitecture.navigation.child_ids = capabilityOverviews.map((document) => document.id);
+    }
+    capabilityOverviews.forEach((document, index) => {
+        const match = capabilityOverviewMatch(document.path);
+        const capabilityId = match?.[1] ?? null;
+        const children = secondaryByCapability.get(capabilityId) ?? [];
+        document.navigation = {
+            role: 'capability_overview',
+            level1_capability_id: capabilityId,
+            business_architecture_id: businessArchitecture?.id ?? null,
+            capability_overview_id: document.id,
+            previous_peer_id: capabilityOverviews[index - 1]?.id ?? null,
+            next_peer_id: capabilityOverviews[index + 1]?.id ?? null,
+            child_ids: children.map((child) => child.id),
+        };
+        children.forEach((child, childIndex) => {
+            const childMatch = secondaryCapabilityMatch(child.path);
+            child.navigation = {
+                role: 'secondary_capability',
+                level1_capability_id: capabilityId,
+                secondary_capability_id: childMatch?.[2] ?? null,
+                business_architecture_id: businessArchitecture?.id ?? null,
+                capability_overview_id: document.id,
+                previous_peer_id: children[childIndex - 1]?.id ?? null,
+                next_peer_id: children[childIndex + 1]?.id ?? null,
+                child_ids: [],
+            };
+        });
+    });
+}
 export class DocumentCatalogService {
     providers;
     documents = new Map();
@@ -100,14 +168,18 @@ export class DocumentCatalogService {
                     source_id: provider.id,
                     source_label: provider.label,
                     name: path.posix.basename(document.path),
+                    is_archive: document.is_archive === true,
                 }));
+                const currentDocuments = normalized.filter((document) => !document.is_archive);
+                const archives = normalized.filter((document) => document.is_archive);
                 return {
                     status: {
                         id: provider.id,
                         label: provider.label,
                         type: provider.type,
                         status: 'healthy',
-                        document_count: normalized.length,
+                        document_count: currentDocuments.length,
+                        archive_count: archives.length,
                         duration_ms: Date.now() - sourceStartedAt,
                     },
                     documents: normalized,
@@ -141,8 +213,33 @@ export class DocumentCatalogService {
         this.documents.clear();
         for (const document of collected)
             this.documents.set(document.id, document);
+        const currentDocuments = collected.filter((document) => !document.is_archive);
+        const archivedDocuments = collected.filter((document) => document.is_archive);
+        const archiveKey = (document) => [
+            document.source_id,
+            document.bucket,
+            document.organizationId,
+            document.projectSlug,
+            document.canonical_path ?? document.path,
+        ].join('\0');
+        const archivesByCanonicalPath = new Map();
+        for (const archive of archivedDocuments) {
+            const key = archiveKey(archive);
+            const history = archivesByCanonicalPath.get(key) ?? [];
+            history.push(archive);
+            archivesByCanonicalPath.set(key, history);
+        }
+        for (const history of archivesByCanonicalPath.values()) {
+            history.sort((left, right) => String(right.archived_at ?? right.updatedAt ?? '')
+                .localeCompare(String(left.archived_at ?? left.updatedAt ?? '')));
+        }
+        for (const document of currentDocuments) {
+            const history = archivesByCanonicalPath.get(archiveKey(document)) ?? [];
+            document.archive_count = history.length;
+            document.latest_archive_at = history[0]?.archived_at ?? null;
+        }
         const bucketMap = new Map();
-        for (const document of collected) {
+        for (const document of currentDocuments) {
             const bucket = bucketMap.get(document.bucket) ?? { sourceIds: new Set(), organizations: new Map() };
             bucket.sourceIds.add(document.source_id);
             const organization = bucket.organizations.get(document.organizationId) ?? new Map();
@@ -160,12 +257,21 @@ export class DocumentCatalogService {
                 .map(([organizationId, projectsValue]) => {
                 const projects = [...projectsValue.entries()]
                     .sort(([left], [right]) => left.localeCompare(right))
-                    .map(([projectSlug, documents]) => ({
-                    slug: projectSlug,
-                    documents,
-                    document_count: documents.length,
-                    latest_updated_at: latestTimestamp(documents),
-                }));
+                    .map(([projectSlug, documents]) => {
+                    applyProjectDocumentNavigation(documents);
+                    const archives = archivedDocuments.filter((archive) => (archive.bucket === bucketName
+                        && archive.organizationId === organizationId
+                        && archive.projectSlug === projectSlug
+                        && documents.some((document) => document.source_id === archive.source_id)));
+                    return {
+                        slug: projectSlug,
+                        documents,
+                        archives,
+                        document_count: documents.length,
+                        archive_count: archives.length,
+                        latest_updated_at: latestTimestamp(documents),
+                    };
+                });
                 return {
                     id: organizationId,
                     projects,
@@ -187,7 +293,7 @@ export class DocumentCatalogService {
         this.refreshCount += 1;
         this.catalog = {
             schema: 'axis.document_review.catalog',
-            schema_version: '0.1',
+            schema_version: '0.2',
             generated_at: new Date().toISOString(),
             refresh: {
                 status: failedSources === 0 ? 'healthy' : failedSources === sourceStatuses.length ? 'error' : 'partial',
@@ -198,7 +304,8 @@ export class DocumentCatalogService {
                 buckets: buckets.length,
                 organizations: buckets.reduce((total, bucket) => total + bucket.organization_count, 0),
                 projects: buckets.reduce((total, bucket) => total + bucket.project_count, 0),
-                documents: collected.length,
+                documents: currentDocuments.length,
+                archives: archivedDocuments.length,
             },
             sources: sourceStatuses,
             buckets,
@@ -238,12 +345,14 @@ export class LocalProjectDocumentProvider {
     repo;
     bucket;
     docsRoot;
+    archiveRoot;
     constructor(options) {
         this.repo = path.resolve(options.repo);
         this.bucket = options.bucket ?? 'local-workspace';
         this.id = options.id ?? `local:${createHash('sha256').update(this.repo).digest('hex').slice(0, 12)}`;
         this.label = options.label ?? '本地工作区';
         this.docsRoot = path.join(this.repo, '.axis', 'docs', 'orgs');
+        this.archiveRoot = path.join(this.repo, '.axis', 'docs', '_archive', 'orgs');
     }
     async listDocuments() {
         if (!existsSync(this.docsRoot))
@@ -264,6 +373,7 @@ export class LocalProjectDocumentProvider {
                 await this.collectProjectDocuments(projectRoot, organization.name, project.name, documents);
             }
         }
+        await this.collectArchiveDocuments(documents);
         return documents.sort((left, right) => (left.organizationId.localeCompare(right.organizationId)
             || left.projectSlug.localeCompare(right.projectSlug)
             || left.path.localeCompare(right.path)));
@@ -294,15 +404,90 @@ export class LocalProjectDocumentProvider {
                     mediaType: mediaTypeFor(relativePath),
                     size: fileStats.size,
                     updatedAt: fileStats.mtime.toISOString(),
+                    is_archive: false,
                 });
             }
         };
         await visit(projectRoot);
     }
+    async collectArchiveDocuments(output) {
+        if (!existsSync(this.archiveRoot))
+            return;
+        const organizations = await readdir(this.archiveRoot, { withFileTypes: true });
+        for (const organization of organizations) {
+            if (!organization.isDirectory())
+                continue;
+            const projectsRoot = path.join(this.archiveRoot, organization.name, 'projects');
+            if (!existsSync(projectsRoot))
+                continue;
+            const projects = await readdir(projectsRoot, { withFileTypes: true });
+            for (const project of projects) {
+                if (!project.isDirectory())
+                    continue;
+                const projectArchiveRoot = path.join(projectsRoot, project.name);
+                const visit = async (directory) => {
+                    const entries = await readdir(directory, { withFileTypes: true });
+                    for (const entry of entries) {
+                        const absolutePath = path.join(directory, entry.name);
+                        if (entry.isDirectory()) {
+                            await visit(absolutePath);
+                            continue;
+                        }
+                        if (!entry.isFile() || entry.name !== 'metadata.json')
+                            continue;
+                        let metadata;
+                        try {
+                            metadata = JSON.parse(await readFile(absolutePath, 'utf8'));
+                        }
+                        catch {
+                            continue;
+                        }
+                        if (metadata.schema !== 'axis.document_archive'
+                            || metadata.organization_id !== organization.name
+                            || metadata.project_slug !== project.name
+                            || typeof metadata.canonical_path !== 'string'
+                            || typeof metadata.archive_content !== 'string')
+                            continue;
+                        const canonicalPath = metadata.canonical_path.replaceAll('\\', '/').replace(/^\/+/, '');
+                        if (!canonicalPath || canonicalPath.split('/').includes('..'))
+                            continue;
+                        const contentPath = path.resolve(path.dirname(absolutePath), metadata.archive_content);
+                        const archiveRootWithSeparator = projectArchiveRoot.endsWith(path.sep)
+                            ? projectArchiveRoot
+                            : `${projectArchiveRoot}${path.sep}`;
+                        if (!contentPath.startsWith(archiveRootWithSeparator) || !existsSync(contentPath) || !isSupportedDocument(contentPath))
+                            continue;
+                        const fileStats = await stat(contentPath);
+                        output.push({
+                            bucket: this.bucket,
+                            organizationId: organization.name,
+                            projectSlug: project.name,
+                            path: `_archive/${canonicalPath}/${metadata.archive_id}${path.extname(contentPath)}`,
+                            locator: path.relative(this.repo, contentPath).split(path.sep).join('/'),
+                            mediaType: mediaTypeFor(contentPath),
+                            size: fileStats.size,
+                            updatedAt: metadata.archived_at ?? fileStats.mtime.toISOString(),
+                            is_archive: true,
+                            canonical_path: canonicalPath,
+                            archive_id: metadata.archive_id,
+                            archived_at: metadata.archived_at ?? fileStats.mtime.toISOString(),
+                            change_reason: metadata.change_reason ?? '',
+                            request_summary: metadata.request_summary ?? '',
+                            source_revision: String(metadata.source_revision ?? ''),
+                            target_revision: String(metadata.target_revision ?? ''),
+                            content_sha256: metadata.content_sha256 ?? null,
+                        });
+                    }
+                };
+                await visit(projectArchiveRoot);
+            }
+        }
+    }
     async readDocument(locator) {
         const absolutePath = path.resolve(this.repo, locator);
         const rootWithSeparator = this.docsRoot.endsWith(path.sep) ? this.docsRoot : `${this.docsRoot}${path.sep}`;
-        if (!absolutePath.startsWith(rootWithSeparator) || !isSupportedDocument(absolutePath)) {
+        const archiveRootWithSeparator = this.archiveRoot.endsWith(path.sep) ? this.archiveRoot : `${this.archiveRoot}${path.sep}`;
+        if ((!absolutePath.startsWith(rootWithSeparator) && !absolutePath.startsWith(archiveRootWithSeparator)) || !isSupportedDocument(absolutePath)) {
             throw new Error('Local document path is outside the allowed Axis docs root');
         }
         const fileStats = await stat(absolutePath);
@@ -335,33 +520,90 @@ export class AliyunOssDocumentProvider {
     }
     async listDocuments() {
         const rootPrefix = `${this.prefix ? `${this.prefix}/` : ''}orgs/`;
+        const archivePrefix = `${this.prefix ? `${this.prefix}/` : ''}_archive/orgs/`;
         const documents = [];
-        let marker;
-        do {
-            const result = await this.client.list({ prefix: rootPrefix, marker, 'max-keys': 1000 });
-            for (const object of result.objects ?? []) {
-                const relative = object.name.slice(rootPrefix.length);
-                const match = /^([^/]+)\/projects\/([^/]+)\/(.+)$/.exec(relative);
-                if (!match || !isSupportedDocument(match[3]))
-                    continue;
-                documents.push({
-                    bucket: this.bucket,
-                    organizationId: match[1],
-                    projectSlug: match[2],
-                    path: match[3],
-                    locator: object.name,
-                    mediaType: mediaTypeFor(match[3]),
-                    size: Number(object.size ?? 0),
-                    updatedAt: object.lastModified ?? null,
-                });
+        const listObjects = async (prefix) => {
+            const objects = [];
+            let marker;
+            do {
+                const result = await this.client.list({ prefix, marker, 'max-keys': 1000 });
+                objects.push(...(result.objects ?? []));
+                marker = result.isTruncated ? result.nextMarker : undefined;
+            } while (marker);
+            return objects;
+        };
+        for (const object of await listObjects(rootPrefix)) {
+            const relative = object.name.slice(rootPrefix.length);
+            const match = /^([^/]+)\/projects\/([^/]+)\/(.+)$/.exec(relative);
+            if (!match || !isSupportedDocument(match[3]))
+                continue;
+            documents.push({
+                bucket: this.bucket,
+                organizationId: match[1],
+                projectSlug: match[2],
+                path: match[3],
+                locator: object.name,
+                mediaType: mediaTypeFor(match[3]),
+                size: Number(object.size ?? 0),
+                updatedAt: object.lastModified ?? null,
+                is_archive: false,
+            });
+        }
+        const archiveObjects = await listObjects(archivePrefix);
+        const archiveObjectByName = new Map(archiveObjects.map((object) => [object.name, object]));
+        for (const metadataObject of archiveObjects.filter((object) => object.name.endsWith('/metadata.json'))) {
+            const relative = metadataObject.name.slice(archivePrefix.length);
+            const match = /^([^/]+)\/projects\/([^/]+)\/(.+)\/metadata\.json$/.exec(relative);
+            if (!match)
+                continue;
+            let metadata;
+            try {
+                const loaded = await this.client.get(metadataObject.name);
+                const bytes = Buffer.isBuffer(loaded.content) ? loaded.content : Buffer.from(loaded.content);
+                metadata = JSON.parse(bytes.toString('utf8'));
             }
-            marker = result.isTruncated ? result.nextMarker : undefined;
-        } while (marker);
+            catch {
+                continue;
+            }
+            if (metadata.schema !== 'axis.document_archive'
+                || metadata.organization_id !== match[1]
+                || metadata.project_slug !== match[2]
+                || typeof metadata.canonical_path !== 'string'
+                || typeof metadata.archive_content !== 'string')
+                continue;
+            const canonicalPath = metadata.canonical_path.replaceAll('\\', '/').replace(/^\/+/, '');
+            if (!canonicalPath || canonicalPath.split('/').includes('..'))
+                continue;
+            const contentName = `${path.posix.dirname(metadataObject.name)}/${metadata.archive_content}`;
+            const contentObject = archiveObjectByName.get(contentName);
+            if (!contentObject || !isSupportedDocument(contentName))
+                continue;
+            documents.push({
+                bucket: this.bucket,
+                organizationId: match[1],
+                projectSlug: match[2],
+                path: `_archive/${canonicalPath}/${metadata.archive_id}${path.posix.extname(contentName)}`,
+                locator: contentName,
+                mediaType: mediaTypeFor(contentName),
+                size: Number(contentObject.size ?? 0),
+                updatedAt: metadata.archived_at ?? contentObject.lastModified ?? null,
+                is_archive: true,
+                canonical_path: canonicalPath,
+                archive_id: metadata.archive_id,
+                archived_at: metadata.archived_at ?? contentObject.lastModified ?? null,
+                change_reason: metadata.change_reason ?? '',
+                request_summary: metadata.request_summary ?? '',
+                source_revision: String(metadata.source_revision ?? ''),
+                target_revision: String(metadata.target_revision ?? ''),
+                content_sha256: metadata.content_sha256 ?? null,
+            });
+        }
         return documents;
     }
     async readDocument(locator) {
         const rootPrefix = `${this.prefix ? `${this.prefix}/` : ''}orgs/`;
-        if (!locator.startsWith(rootPrefix) || !isSupportedDocument(locator)) {
+        const archivePrefix = `${this.prefix ? `${this.prefix}/` : ''}_archive/orgs/`;
+        if ((!locator.startsWith(rootPrefix) && !locator.startsWith(archivePrefix)) || !isSupportedDocument(locator)) {
             throw new Error('OSS object is outside the configured project-document prefix');
         }
         const result = await this.client.get(locator);
