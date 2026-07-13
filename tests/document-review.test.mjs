@@ -61,20 +61,110 @@ const documents = [{
     organizations: 1,
     projects: 1,
     documents: 1,
+    archives: 0,
   });
   const document = catalog.buckets[0].organizations[0].projects[0].documents[0];
   assert.equal((await service.readDocument(document.id)).content, '# 业务架构\n');
+}
+
+{
+  const hierarchyDocuments = [
+    {
+      ...documents[0],
+      locator: 'orgs/org_example/projects/example-project/architecture/business.md',
+    },
+    ...['commerce', 'service'].flatMap((capabilityId) => [
+      {
+        ...documents[0],
+        path: `business/capabilities/${capabilityId}/detailed-design.md`,
+        locator: `orgs/org_example/projects/example-project/business/capabilities/${capabilityId}/detailed-design.md`,
+        content: `# ${capabilityId} 详细设计\n`,
+      },
+      {
+        ...documents[0],
+        path: `business/capabilities/${capabilityId}/secondary-capabilities/${capabilityId}_one/detailed-design.md`,
+        locator: `orgs/org_example/projects/example-project/business/capabilities/${capabilityId}/secondary-capabilities/${capabilityId}_one/detailed-design.md`,
+        content: `# ${capabilityId} one 详细设计\n`,
+      },
+      {
+        ...documents[0],
+        path: `business/capabilities/${capabilityId}/secondary-capabilities/${capabilityId}_two/detailed-design.md`,
+        locator: `orgs/org_example/projects/example-project/business/capabilities/${capabilityId}/secondary-capabilities/${capabilityId}_two/detailed-design.md`,
+        content: `# ${capabilityId} two 详细设计\n`,
+      },
+    ]),
+  ];
+  const service = new DocumentCatalogService([fakeProvider(hierarchyDocuments)]);
+  const catalog = await service.refresh();
+  const projectDocuments = catalog.buckets[0].organizations[0].projects[0].documents;
+  const byPath = (documentPath) => projectDocuments.find((document) => document.path === documentPath);
+  const businessArchitecture = byPath('architecture/business.md');
+  const commerce = byPath('business/capabilities/commerce/detailed-design.md');
+  const serviceOverview = byPath('business/capabilities/service/detailed-design.md');
+  const commerceOne = byPath('business/capabilities/commerce/secondary-capabilities/commerce_one/detailed-design.md');
+  const commerceTwo = byPath('business/capabilities/commerce/secondary-capabilities/commerce_two/detailed-design.md');
+
+  assert.equal(businessArchitecture.navigation.role, 'business_architecture');
+  assert.deepEqual(businessArchitecture.navigation.child_ids, [commerce.id, serviceOverview.id]);
+  assert.equal(commerce.navigation.business_architecture_id, businessArchitecture.id);
+  assert.equal(commerce.navigation.next_peer_id, serviceOverview.id);
+  assert.deepEqual(commerce.navigation.child_ids, [commerceOne.id, commerceTwo.id]);
+  assert.equal(commerceOne.navigation.role, 'secondary_capability');
+  assert.equal(commerceOne.navigation.capability_overview_id, commerce.id);
+  assert.equal(commerceOne.navigation.next_peer_id, commerceTwo.id);
+  assert.equal(commerceTwo.navigation.previous_peer_id, commerceOne.id);
 }
 
 await withTempDir(async (projectRoot) => {
   const docsRoot = path.join(projectRoot, '.axis', 'docs', 'orgs', 'org_example', 'projects', 'example-project');
   await mkdir(path.join(docsRoot, 'architecture'), { recursive: true });
   await writeFile(path.join(docsRoot, 'architecture', 'technical.md'), '# 技术架构\n', 'utf8');
+  const archiveRoot = path.join(
+    projectRoot,
+    '.axis',
+    'docs',
+    '_archive',
+    'orgs',
+    'org_example',
+    'projects',
+    'example-project',
+    'architecture',
+    'technical.md.history',
+    '20260712T010000Z-r1-a1b2c3d4',
+  );
+  await mkdir(archiveRoot, { recursive: true });
+  await writeFile(path.join(archiveRoot, 'document.md'), '# 技术架构历史版本\n', 'utf8');
+  await writeFile(path.join(archiveRoot, 'metadata.json'), JSON.stringify({
+    schema: 'axis.document_archive',
+    schema_version: '0.2',
+    archive_id: '20260712T010000Z-r1-a1b2c3d4',
+    organization_id: 'org_example',
+    project_slug: 'example-project',
+    canonical_path: 'architecture/technical.md',
+    archive_content: 'document.md',
+    archived_at: '2026-07-12T01:00:00Z',
+    change_reason: '更新技术架构',
+    request_summary: '增加历史追溯',
+    source_revision: '1',
+    target_revision: '2',
+    content_sha256: 'a'.repeat(64),
+  }), 'utf8');
   const provider = new LocalProjectDocumentProvider({ repo: projectRoot });
   const listed = await provider.listDocuments();
-  assert.equal(listed.length, 1);
-  assert.equal(listed[0].organizationId, 'org_example');
-  assert.equal(listed[0].projectSlug, 'example-project');
+  assert.equal(listed.length, 2);
+  assert.equal(listed.filter((document) => !document.is_archive).length, 1);
+  const archived = listed.find((document) => document.is_archive);
+  assert.equal(archived.organizationId, 'org_example');
+  assert.equal(archived.projectSlug, 'example-project');
+  assert.equal(archived.canonical_path, 'architecture/technical.md');
+  const service = new DocumentCatalogService([provider]);
+  const catalog = await service.refresh();
+  const project = catalog.buckets[0].organizations[0].projects[0];
+  assert.equal(project.document_count, 1);
+  assert.equal(project.archive_count, 1);
+  assert.equal(project.documents[0].archive_count, 1);
+  assert.equal(project.archives[0].change_reason, '更新技术架构');
+  assert.equal((await service.readDocument(project.archives[0].id)).content, '# 技术架构历史版本\n');
 });
 
 {
@@ -83,7 +173,8 @@ await withTempDir(async (projectRoot) => {
     bucket: 'example-bucket',
     prefix: 'docs',
     client: {
-      async list({ marker }) {
+      async list({ prefix, marker }) {
+        if (prefix.includes('_archive/')) return { isTruncated: false, objects: [] };
         if (!marker) {
           return {
             isTruncated: true,

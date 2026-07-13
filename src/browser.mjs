@@ -17,12 +17,14 @@ const state = {
   catalog: null,
   selectedProject: null,
   selectedDocument: null,
+  selectedCurrentDocument: null,
   activeSourceId: null,
   selectedType: 'all',
   query: '',
   content: '',
   documentTitles: new Map(),
   titleLoads: new Set(),
+  expandedCapabilityIds: new Set(),
   documentLoadSequence: 0,
 };
 
@@ -47,6 +49,15 @@ const elements = {
   viewerPanel: document.querySelector('.viewer-panel'),
   fullscreenButton: document.querySelector('#fullscreenButton'),
   copyButton: document.querySelector('#copyButton'),
+  historyButton: document.querySelector('#historyButton'),
+  historyCount: document.querySelector('#historyCount'),
+  historyPanel: document.querySelector('#historyPanel'),
+  historyList: document.querySelector('#historyList'),
+  closeHistoryButton: document.querySelector('#closeHistoryButton'),
+  archiveBanner: document.querySelector('#archiveBanner'),
+  archiveBannerText: document.querySelector('#archiveBannerText'),
+  returnCurrentButton: document.querySelector('#returnCurrentButton'),
+  documentNavigation: document.querySelector('#documentNavigation'),
   toast: document.querySelector('#toast'),
 };
 
@@ -191,7 +202,10 @@ async function hydrateDocumentTitles(documents, projectKeyAtStart, excludedId = 
     }
   });
   await Promise.all(workers);
-  if (state.selectedProject?.key === projectKeyAtStart) renderDocumentList();
+  if (state.selectedProject?.key === projectKeyAtStart) {
+    renderDocumentList();
+    renderDocumentNavigation(state.selectedCurrentDocument);
+  }
 }
 
 function showToast(message) {
@@ -220,7 +234,7 @@ function renderSources() {
       <span class="source-indicator"></span>
       <span class="source-copy">
         <strong>${escapeHtml(source.label)}</strong>
-        <small>${source.status === 'error' ? escapeHtml(source.error || '读取失败') : `${source.document_count} 篇 · ${source.duration_ms} ms`}</small>
+        <small>${source.status === 'error' ? escapeHtml(source.error || '读取失败') : `${source.document_count} 篇 · ${source.archive_count ?? 0} 历史 · ${source.duration_ms} ms`}</small>
       </span>
     </button>
   `).join('');
@@ -290,8 +304,10 @@ function renderCatalogTree() {
 function clearProjectSelection() {
   state.selectedProject = null;
   state.selectedDocument = null;
+  state.selectedCurrentDocument = null;
   state.content = '';
   state.selectedType = 'all';
+  state.expandedCapabilityIds.clear();
   state.documentLoadSequence += 1;
   elements.projectDocumentCount.textContent = '0';
   elements.typeFilters.innerHTML = '';
@@ -302,6 +318,12 @@ function clearProjectSelection() {
   elements.viewerMeta.innerHTML = '';
   elements.viewerContent.innerHTML = '<div class="empty-state"><h4>当前数据源暂无可查阅文档</h4></div>';
   elements.copyButton.disabled = true;
+  elements.historyButton.disabled = true;
+  elements.historyCount.textContent = '0';
+  elements.historyPanel.hidden = true;
+  elements.archiveBanner.hidden = true;
+  elements.documentNavigation.hidden = true;
+  elements.documentNavigation.innerHTML = '';
 }
 
 function selectSource(sourceId) {
@@ -329,6 +351,7 @@ function selectProject(key, options = {}) {
   const selected = findProject(key);
   if (!selected) return;
   const projectChanged = state.selectedProject?.key !== key;
+  if (projectChanged) state.expandedCapabilityIds.clear();
   state.selectedProject = selected;
   const projectSourceId = selected.project.documents[0]?.source_id ?? selected.bucket.source_ids[0];
   if (projectSourceId && projectSourceId !== state.activeSourceId) {
@@ -346,8 +369,10 @@ function selectProject(key, options = {}) {
     : selected.project.documents.some((documentRecord) => fileType(documentRecord) === DEFAULT_DOCUMENT_TYPE)
       ? DEFAULT_DOCUMENT_TYPE
       : 'all';
+  if (projectChanged || requestedDocument) state.selectedCurrentDocument = defaultDocument ?? null;
   renderCatalogTree();
   renderDocumentList();
+  renderHistoryPanel();
   if (projectChanged) elements.documentList.scrollTop = 0;
   void hydrateDocumentTitles(selected.project.documents, selected.key, defaultDocument?.id);
   if (!options.keepDocument && defaultDocument) loadDocument(defaultDocument.id, { resetList: projectChanged });
@@ -382,32 +407,162 @@ function renderTypeFilters() {
 
 function renderDocumentList() {
   const documents = filteredDocuments();
+  const allDocuments = state.selectedProject?.project.documents ?? [];
+  const visibleIds = new Set(documents.map((document) => document.id));
   const total = state.selectedProject?.project.document_count ?? 0;
   elements.projectDocumentCount.textContent = total;
   renderTypeFilters();
-  elements.documentList.innerHTML = documents.map((document) => `
-    <button class="document-item ${state.selectedDocument?.id === document.id ? 'active' : ''}" type="button" data-document-id="${document.id}" title="${escapeHtml(document.path)}">
+  const documentButton = (document, className = '') => `
+    <button class="document-item ${className} ${state.selectedCurrentDocument?.id === document.id ? 'active' : ''}" type="button" data-document-id="${document.id}" title="${escapeHtml(document.path)}">
       <span class="file-icon">${fileType(document)}</span>
       <span class="document-copy">
         <strong>${escapeHtml(document.name)}</strong>
         <small class="document-title">${escapeHtml(documentDisplayTitle(document))}</small>
       </span>
     </button>
-  `).join('') || '<div class="empty-state compact"><p>当前筛选下没有文档</p></div>';
+  `;
+  const capabilityOverviews = allDocuments.filter((document) => document.navigation?.role === 'capability_overview');
+  const hierarchicalIds = new Set(capabilityOverviews.flatMap((document) => [document.id, ...(document.navigation.child_ids ?? [])]));
+  const markup = documents
+    .filter((document) => !hierarchicalIds.has(document.id))
+    .map((document) => documentButton(document));
+  for (const overview of capabilityOverviews) {
+    const children = (overview.navigation.child_ids ?? [])
+      .map((id) => allDocuments.find((document) => document.id === id))
+      .filter(Boolean);
+    const visibleChildren = children.filter((document) => visibleIds.has(document.id));
+    if (!visibleIds.has(overview.id) && visibleChildren.length === 0) continue;
+    const selectedChild = children.some((document) => document.id === state.selectedCurrentDocument?.id);
+    const expanded = state.query || selectedChild || state.expandedCapabilityIds.has(overview.id);
+    markup.push(`
+      <div class="capability-group ${expanded ? 'expanded' : ''}" data-capability-group="${overview.id}">
+        <div class="capability-row">
+          <button class="capability-toggle" type="button" data-capability-toggle="${overview.id}" aria-expanded="${Boolean(expanded)}" title="展开或折叠二级能力">${expanded ? '▾' : '▸'}</button>
+          ${documentButton(overview, 'capability-overview-item')}
+        </div>
+        <div class="capability-children" ${expanded ? '' : 'hidden'}>
+          ${visibleChildren.map((document) => documentButton(document, 'secondary-capability-item')).join('')}
+        </div>
+      </div>
+    `);
+  }
+  elements.documentList.innerHTML = markup.join('') || '<div class="empty-state compact"><p>当前筛选下没有文档</p></div>';
+  elements.documentList.querySelectorAll('[data-capability-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const capabilityId = button.dataset.capabilityToggle;
+      if (state.expandedCapabilityIds.has(capabilityId)) state.expandedCapabilityIds.delete(capabilityId);
+      else state.expandedCapabilityIds.add(capabilityId);
+      renderDocumentList();
+    });
+  });
   elements.documentList.querySelectorAll('[data-document-id]').forEach((button) => {
     button.addEventListener('click', () => loadDocument(button.dataset.documentId));
   });
 }
 
+function projectDocument(documentId) {
+  return state.selectedProject?.project.documents.find((document) => document.id === documentId) ?? null;
+}
+
+function navigationButton(documentId, label, className = '') {
+  const documentRecord = projectDocument(documentId);
+  if (!documentRecord) return '';
+  return `<button class="document-nav-button ${className}" type="button" data-navigation-document-id="${documentRecord.id}">${escapeHtml(label)}</button>`;
+}
+
+function renderDocumentNavigation(documentRecord = state.selectedCurrentDocument) {
+  const current = documentRecord?.is_archive ? state.selectedCurrentDocument : documentRecord;
+  const navigation = current?.navigation;
+  if (!current || !navigation || navigation.role === 'document') {
+    elements.documentNavigation.hidden = true;
+    elements.documentNavigation.innerHTML = '';
+    return;
+  }
+  const businessArchitecture = projectDocument(navigation.business_architecture_id);
+  const capabilityOverview = projectDocument(navigation.capability_overview_id);
+  let trail = '';
+  let controls = '';
+  let children = '';
+  if (navigation.role === 'business_architecture') {
+    trail = '<span>业务架构</span>';
+    children = (navigation.child_ids ?? [])
+      .map((id) => navigationButton(id, `进入 ${documentDisplayTitle(projectDocument(id))}`, 'child-link'))
+      .join('');
+  } else if (navigation.role === 'capability_overview') {
+    trail = `<span>业务架构</span><span>／</span><strong>${escapeHtml(documentDisplayTitle(current))}</strong>`;
+    controls = [
+      navigationButton(businessArchitecture?.id, '返回业务架构', 'back-link'),
+      navigationButton(navigation.previous_peer_id, '上一个能力'),
+      navigationButton(navigation.next_peer_id, '下一个能力'),
+    ].join('');
+    children = (navigation.child_ids ?? [])
+      .map((id) => navigationButton(id, `进入 ${documentDisplayTitle(projectDocument(id))}`, 'child-link'))
+      .join('');
+  } else if (navigation.role === 'secondary_capability') {
+    trail = `<span>业务架构</span><span>／</span><span>${escapeHtml(documentDisplayTitle(capabilityOverview))}</span><span>／</span><strong>${escapeHtml(documentDisplayTitle(current))}</strong>`;
+    controls = [
+      navigationButton(capabilityOverview?.id, '返回能力总览', 'back-link'),
+      navigationButton(navigation.previous_peer_id, '上一个二级能力'),
+      navigationButton(navigation.next_peer_id, '下一个二级能力'),
+    ].join('');
+  }
+  elements.documentNavigation.innerHTML = `
+    <div class="document-nav-trail">${trail}</div>
+    ${controls ? `<div class="document-nav-controls">${controls}</div>` : ''}
+    ${children ? `<div class="document-nav-children">${children}</div>` : ''}
+  `;
+  elements.documentNavigation.hidden = false;
+  elements.documentNavigation.querySelectorAll('[data-navigation-document-id]').forEach((button) => {
+    button.addEventListener('click', () => loadDocument(button.dataset.navigationDocumentId));
+  });
+}
+
+function archivesForDocument(documentRecord = state.selectedCurrentDocument) {
+  if (!documentRecord) return [];
+  return (state.selectedProject?.project.archives ?? [])
+    .filter((archive) => archive.source_id === documentRecord.source_id && archive.canonical_path === documentRecord.path)
+    .sort((left, right) => String(right.archived_at ?? '').localeCompare(String(left.archived_at ?? '')));
+}
+
+function renderHistoryPanel() {
+  const archives = archivesForDocument();
+  elements.historyCount.textContent = String(archives.length);
+  elements.historyButton.disabled = archives.length === 0;
+  if (archives.length === 0) {
+    elements.historyPanel.hidden = true;
+    elements.historyList.innerHTML = '<div class="empty-state compact"><p>当前文档暂无历史版本</p></div>';
+    return;
+  }
+  elements.historyList.innerHTML = archives.map((archive) => `
+    <button class="history-item ${state.selectedDocument?.id === archive.id ? 'active' : ''}" type="button" data-archive-id="${archive.id}">
+      <span class="history-revision">r${escapeHtml(archive.source_revision || '未知')} → r${escapeHtml(archive.target_revision || '未知')}</span>
+      <strong>${escapeHtml(archive.change_reason || '文档修订存档')}</strong>
+      <small>${escapeHtml(formatDate(archive.archived_at))} · ${escapeHtml(archive.content_sha256?.slice(0, 12) || '无哈希')}</small>
+    </button>
+  `).join('');
+  elements.historyList.querySelectorAll('[data-archive-id]').forEach((button) => {
+    button.addEventListener('click', () => loadDocument(button.dataset.archiveId, { archive: true }));
+  });
+}
+
 async function renderViewer(documentRecord, content) {
-  elements.viewerPath.textContent = `${documentRecord.bucket} / ${documentRecord.organizationId} / ${documentRecord.projectSlug} / ${documentRecord.path}`;
-  elements.viewerTitle.textContent = documentRecord.name;
+  elements.viewerPath.textContent = documentRecord.is_archive
+    ? `${documentRecord.bucket} / ${documentRecord.organizationId} / ${documentRecord.projectSlug} / 历史 / ${documentRecord.canonical_path}`
+    : `${documentRecord.bucket} / ${documentRecord.organizationId} / ${documentRecord.projectSlug} / ${documentRecord.path}`;
+  elements.viewerTitle.textContent = documentRecord.is_archive
+    ? `历史版本 · r${documentRecord.source_revision || '未知'}`
+    : documentRecord.name;
   elements.viewerSource.textContent = documentRecord.source_label;
   elements.viewerMeta.innerHTML = `
     <span>${escapeHtml(documentRecord.mediaType)}</span>
     <span>${formatBytes(documentRecord.size)}</span>
     <span>${formatDate(documentRecord.updatedAt)}</span>
   `;
+  elements.archiveBanner.hidden = !documentRecord.is_archive;
+  if (documentRecord.is_archive) {
+    elements.archiveBannerText.textContent = `${documentRecord.change_reason || '文档修订存档'} · ${formatDate(documentRecord.archived_at)} · ${documentRecord.content_sha256?.slice(0, 12) || '无哈希'}`;
+  }
+  renderDocumentNavigation(documentRecord);
   if (documentRecord.mediaType === 'text/markdown') {
     elements.viewerContent.innerHTML = renderMarkdown(content);
   } else {
@@ -434,11 +589,16 @@ async function loadDocument(documentId, options = {}) {
     const loaded = await response.json();
     if (loadSequence !== state.documentLoadSequence) return;
     state.selectedDocument = loaded.document;
+    if (!loaded.document.is_archive) state.selectedCurrentDocument = loaded.document;
+    if (loaded.document.navigation?.capability_overview_id) {
+      state.expandedCapabilityIds.add(loaded.document.navigation.capability_overview_id);
+    }
     state.content = loaded.content;
     if (fileType(loaded.document) === DEFAULT_DOCUMENT_TYPE) {
       state.documentTitles.set(loaded.document.id, extractDocumentTitle(loaded.content, loaded.document.name));
     }
     renderDocumentList();
+    renderHistoryPanel();
     if (options.resetList) elements.documentList.scrollTop = 0;
     await renderViewer(loaded.document, loaded.content);
     const url = new URL(window.location.href);
@@ -457,16 +617,21 @@ function selectInitialProject() {
     for (const bucket of state.catalog?.buckets ?? []) {
       for (const organization of bucket.organizations) {
         for (const project of organization.projects) {
-          if (project.documents.some((document) => document.id === requestedDocumentId)) {
-            const requestedDocument = project.documents.find((document) => document.id === requestedDocumentId);
+          if (project.documents.some((document) => document.id === requestedDocumentId)
+            || (project.archives ?? []).some((document) => document.id === requestedDocumentId)) {
+            const requestedDocument = project.documents.find((document) => document.id === requestedDocumentId)
+              ?? project.archives.find((document) => document.id === requestedDocumentId);
+            const requestedCurrentDocument = requestedDocument.is_archive
+              ? project.documents.find((document) => document.path === requestedDocument.canonical_path && document.source_id === requestedDocument.source_id)
+              : requestedDocument;
             state.activeSourceId = requestedDocument?.source_id ?? bucket.source_ids[0];
             renderSources();
             renderCatalogTree();
             selectProject(projectKey(bucket, organization, project), {
               keepDocument: true,
-              preferredDocumentId: requestedDocumentId,
+              preferredDocumentId: requestedCurrentDocument?.id,
             });
-            loadDocument(requestedDocumentId);
+            loadDocument(requestedDocumentId, { archive: requestedDocument.is_archive });
             return;
           }
         }
@@ -480,7 +645,7 @@ function selectInitialProject() {
 
 function applyCatalog(catalog, preserveSelection = false) {
   const previousProjectKey = state.selectedProject?.key;
-  const previousDocumentId = state.selectedDocument?.id;
+  const previousDocumentId = state.selectedCurrentDocument?.id;
   state.catalog = catalog;
   if (!catalog.sources.some((source) => source.id === state.activeSourceId)) {
     state.activeSourceId = catalog.sources.find((source) => source.type === 'aliyun-oss' && source.status === 'healthy')?.id
@@ -535,6 +700,15 @@ elements.copyButton.addEventListener('click', async () => {
   if (!state.content) return;
   await navigator.clipboard.writeText(state.content);
   showToast('文档内容已复制');
+});
+elements.historyButton.addEventListener('click', () => {
+  elements.historyPanel.hidden = !elements.historyPanel.hidden;
+});
+elements.closeHistoryButton.addEventListener('click', () => {
+  elements.historyPanel.hidden = true;
+});
+elements.returnCurrentButton.addEventListener('click', () => {
+  if (state.selectedCurrentDocument) loadDocument(state.selectedCurrentDocument.id);
 });
 
 function setFallbackFullscreen(active) {

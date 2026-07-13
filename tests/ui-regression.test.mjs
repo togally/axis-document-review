@@ -24,6 +24,27 @@ assert.match(browserSource, /loadDocument\(defaultDocument\.id,\s*\{\s*resetList
 assert.match(browserSource, /if \(options\.resetList\) elements\.documentList\.scrollTop\s*=\s*0/);
 assert.doesNotMatch(browserSource, /tree-summary/);
 assert.match(css, /\.source-item\.active/);
+assert.match(html, /id="historyButton"/);
+assert.match(html, /id="historyPanel"/);
+assert.match(html, /历史追溯/);
+assert.match(browserSource, /archivesForDocument/);
+assert.match(browserSource, /project\.archives/);
+assert.match(html, /返回当前版本/);
+assert.match(css, /\.history-panel/);
+assert.match(css, /\.archive-banner/);
+assert.match(html, /id="documentNavigation"/);
+assert.match(browserSource, /renderDocumentNavigation/);
+assert.match(browserSource, /capability-group/);
+assert.match(browserSource, /capability-toggle/);
+assert.match(browserSource, /navigation\.child_ids/);
+assert.match(browserSource, /返回业务架构/);
+assert.match(browserSource, /返回能力总览/);
+assert.match(browserSource, /上一个能力/);
+assert.match(browserSource, /下一个能力/);
+assert.match(browserSource, /上一个二级能力/);
+assert.match(browserSource, /下一个二级能力/);
+assert.match(css, /\.document-navigation/);
+assert.match(css, /\.capability-children/);
 
 const navigationMarkup = html.match(/<aside[^>]+class="navigation-panel"[\s\S]*?<\/aside>/)?.[0] ?? '';
 const contentMarkup = html.match(/<section class="content-panel">[\s\S]*?<\/section>\s*<\/main>/)?.[0] ?? '';
