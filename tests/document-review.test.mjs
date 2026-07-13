@@ -194,6 +194,64 @@ await withTempDir(async (projectRoot) => {
   assert.equal(markerSeen, true);
 }
 
+{
+  const projectPrefix = 'docs/orgs/org_example/projects/example-project/';
+  const currentPaths = [
+    'architecture/business.md',
+    'business/capabilities/commerce/detailed-design.md',
+    'business/capabilities/commerce/secondary-capabilities/order_fulfillment/detailed-design.md',
+    '_sync/metadata.json',
+    '_sync/manifest.json',
+  ];
+  const listedPaths = [
+    ...currentPaths,
+    'business/domains/legacy_order/detailed-design.md',
+  ];
+  const manifest = {
+    schema: 'axis.package.manifest',
+    schema_version: '0.2',
+    organization: { id: 'org_example' },
+    project: { slug: 'example-project' },
+    publish: { status: 'published' },
+    files: [
+      { kind: 'metadata', path: 'metadata.json' },
+      { kind: 'document', path: 'documents/architecture/business.md' },
+      { kind: 'document', path: 'documents/business/capabilities/commerce/detailed-design.md' },
+      {
+        kind: 'document',
+        path: 'documents/business/capabilities/commerce/secondary-capabilities/order_fulfillment/detailed-design.md',
+      },
+      { kind: 'manifest', path: 'manifest.json' },
+    ],
+  };
+  const provider = new AliyunOssDocumentProvider({
+    bucket: 'example-bucket',
+    prefix: 'docs',
+    client: {
+      async list({ prefix }) {
+        if (prefix.includes('_archive/')) return { isTruncated: false, objects: [] };
+        return {
+          isTruncated: false,
+          objects: listedPaths.map((documentPath) => ({
+            name: `${projectPrefix}${documentPath}`,
+            size: 10,
+          })),
+        };
+      },
+      async get(name) {
+        assert.equal(name, `${projectPrefix}_sync/manifest.json`);
+        return { content: Buffer.from(JSON.stringify(manifest)) };
+      },
+    },
+  });
+  const listed = await provider.listDocuments();
+  assert.deepEqual(
+    listed.filter((document) => !document.is_archive).map((document) => document.path).sort(),
+    currentPaths.sort(),
+    'the latest project sync manifest should hide superseded current-document paths without deleting OSS history',
+  );
+}
+
 await withTempDir(async (projectRoot) => {
   await mkdir(path.join(projectRoot, '.axis'), { recursive: true });
   await writeFile(path.join(projectRoot, '.axis', 'config.yml'), [

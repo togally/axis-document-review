@@ -35,6 +35,35 @@ function mediaTypeFor(filePath) {
 function isSupportedDocument(filePath) {
     return supportedDocumentExtensions.has(path.extname(filePath).toLowerCase());
 }
+function synchronizedProjectDocumentPaths(manifest, organizationId, projectSlug) {
+    if (manifest?.schema !== 'axis.package.manifest'
+        || manifest?.schema_version !== '0.2'
+        || manifest?.organization?.id !== organizationId
+        || manifest?.project?.slug !== projectSlug
+        || manifest?.publish?.status !== 'published'
+        || !Array.isArray(manifest?.files)) {
+        return null;
+    }
+    const paths = new Set();
+    for (const file of manifest.files) {
+        if (typeof file?.path !== 'string')
+            continue;
+        if (file.path.startsWith('documents/_archive/'))
+            continue;
+        if (file.path.startsWith('documents/')) {
+            const documentPath = file.path.slice('documents/'.length);
+            if (documentPath && !documentPath.split('/').includes('..') && isSupportedDocument(documentPath)) {
+                paths.add(documentPath);
+            }
+            continue;
+        }
+        if (file.path === 'metadata.json')
+            paths.add('_sync/metadata.json');
+        if (file.path === 'manifest.json')
+            paths.add('_sync/manifest.json');
+    }
+    return paths;
+}
 function stableDocumentId(providerId, document) {
     return createHash('sha256')
         .update(providerId)
@@ -532,22 +561,54 @@ export class AliyunOssDocumentProvider {
             } while (marker);
             return objects;
         };
+        const projectObjects = new Map();
         for (const object of await listObjects(rootPrefix)) {
             const relative = object.name.slice(rootPrefix.length);
             const match = /^([^/]+)\/projects\/([^/]+)\/(.+)$/.exec(relative);
             if (!match || !isSupportedDocument(match[3]))
                 continue;
-            documents.push({
-                bucket: this.bucket,
-                organizationId: match[1],
-                projectSlug: match[2],
-                path: match[3],
-                locator: object.name,
-                mediaType: mediaTypeFor(match[3]),
-                size: Number(object.size ?? 0),
-                updatedAt: object.lastModified ?? null,
-                is_archive: false,
-            });
+            const projectKey = `${match[1]}\0${match[2]}`;
+            const entries = projectObjects.get(projectKey) ?? [];
+            entries.push({ object, organizationId: match[1], projectSlug: match[2], path: match[3] });
+            projectObjects.set(projectKey, entries);
+        }
+        for (const entries of projectObjects.values()) {
+            const { organizationId, projectSlug } = entries[0];
+            const manifestEntry = entries.find((entry) => entry.path === '_sync/manifest.json');
+            let currentEntries = entries;
+            if (manifestEntry) {
+                try {
+                    const loaded = await this.client.get(manifestEntry.object.name);
+                    const bytes = Buffer.isBuffer(loaded.content) ? loaded.content : Buffer.from(loaded.content);
+                    if (bytes.byteLength <= maximumDocumentBytes) {
+                        const manifestPaths = synchronizedProjectDocumentPaths(
+                            JSON.parse(bytes.toString('utf8')),
+                            organizationId,
+                            projectSlug,
+                        );
+                        if (manifestPaths) {
+                            currentEntries = entries.filter((entry) => manifestPaths.has(entry.path));
+                        }
+                    }
+                }
+                catch {
+                    // Compatibility fallback: older or temporarily unreadable projects remain browseable.
+                }
+            }
+            for (const entry of currentEntries) {
+                const { object } = entry;
+                documents.push({
+                    bucket: this.bucket,
+                    organizationId: entry.organizationId,
+                    projectSlug: entry.projectSlug,
+                    path: entry.path,
+                    locator: object.name,
+                    mediaType: mediaTypeFor(entry.path),
+                    size: Number(object.size ?? 0),
+                    updatedAt: object.lastModified ?? null,
+                    is_archive: false,
+                });
+            }
         }
         const archiveObjects = await listObjects(archivePrefix);
         const archiveObjectByName = new Map(archiveObjects.map((object) => [object.name, object]));
