@@ -234,6 +234,17 @@ await withTempDir(async (root) => {
     assert.equal((await fetch(`${running.url}/api/health`)).status, 200);
     const catalog = await (await fetch(`${running.url}/api/catalog`)).json();
     assert.equal(catalog.totals.documents, 1);
+    documents.push({
+      ...documents[0],
+      path: 'architecture/technical.md',
+      locator: 'orgs/org_example/projects/example-project/architecture/technical.md',
+      content: '# 技术架构\n',
+    });
+    const cachedCatalog = await (await fetch(`${running.url}/api/catalog`)).json();
+    assert.equal(cachedCatalog.totals.documents, 1, 'catalog reads should remain stable until the user requests a refresh');
+    const refreshedCatalog = await (await fetch(`${running.url}/api/refresh`, { method: 'POST' })).json();
+    assert.equal(refreshedCatalog.totals.documents, 2, 'manual refresh should reflect current provider data without a server restart');
+    documents.pop();
     assert.match(await (await fetch(running.url)).text(), /Axis Document Review/);
   } finally {
     await running.close();
