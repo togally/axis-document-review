@@ -1002,7 +1002,9 @@ body.viewer-fullscreen-fallback {
 
 .table-wrap {
   margin: 18px 0;
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
   border: 1px solid var(--line);
   border-radius: 10px;
 }
@@ -1013,8 +1015,13 @@ body.viewer-fullscreen-fallback {
   font-size: 12px;
 }
 
+.table-wrap > table {
+  min-width: max(100%, calc(var(--table-column-count, 1) * 8rem));
+}
+
 .viewer-content th,
 .viewer-content td {
+  min-width: 8rem;
   padding: 9px 11px;
   border-bottom: 1px solid var(--line);
   text-align: left;
@@ -1024,6 +1031,18 @@ body.viewer-fullscreen-fallback {
 .viewer-content th {
   color: var(--muted-bright);
   background: var(--surface-raised);
+  white-space: nowrap;
+}
+
+.viewer-content td {
+  word-break: normal;
+}
+
+.viewer-content td code,
+.viewer-content td .document-link {
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 
 .viewer-content tr:last-child td {

@@ -59,6 +59,21 @@ assert.match(css, /\.document-workbench\s*\{[^}]*grid-template-columns:\s*minmax
 assert.match(css, /\.navigation-documents\s*\{[^}]*min-height:\s*0[^}]*flex:\s*1/s);
 assert.match(css, /\.viewer-panel\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s);
 assert.match(css, /\.viewer-content\s*\{[^}]*overflow-y:\s*auto[^}]*overscroll-behavior:\s*contain/s);
+assert.match(browserSource, /querySelectorAll\(['"]table['"]\)/);
+assert.match(browserSource, /className\s*=\s*['"]table-wrap['"]/);
+assert.match(browserSource, /async function enhanceRenderedContent\(\)\s*\{\s*enhanceRenderedTables\(\)/);
+assert.match(browserSource, /table\.before\(wrapper\)[^]*wrapper\.append\(table\)/);
+assert.match(browserSource, /row\.cells[^]*cell\.colSpan/);
+assert.match(browserSource, /--table-column-count/);
+assert.match(browserSource, /setAttribute\(['"]role['"],\s*['"]region['"]\)/);
+assert.match(browserSource, /tabIndex\s*=\s*0/);
+assert.match(browserSource, /aria-label[^]*可横向滚动/);
+assert.match(css, /\.table-wrap\s*\{[^}]*max-width:\s*100%[^}]*overflow-x:\s*auto/s);
+assert.match(css, /\.viewer-content table\s*\{[^}]*width:\s*100%/s);
+assert.match(css, /\.table-wrap\s*>\s*table\s*\{[^}]*min-width:\s*max\(100%,\s*calc\(var\(--table-column-count,\s*1\)\s*\*\s*8rem\)\)/s);
+assert.match(css, /\.viewer-content th\s*\{[^}]*white-space:\s*nowrap/s);
+assert.match(css, /\.viewer-content td\s*\{[^}]*word-break:\s*normal/s);
+assert.match(css, /\.viewer-content td code,[^}]*\.viewer-content td \.document-link\s*\{[^}]*overflow-wrap:\s*anywhere/s);
 
 assert.doesNotMatch(html, /class="context-bar"|id="breadcrumb"|id="projectTitle"/);
 assert.match(html, /<header class="viewer-header">[\s\S]*id="viewerPath"[\s\S]*id="viewerTitle"[\s\S]*id="viewerMeta"[\s\S]*id="lastRefresh"[\s\S]*<\/header>/);
