@@ -83,7 +83,28 @@ function languageFor(documentRecord) {
   return '';
 }
 
+function enhanceRenderedTables() {
+  elements.viewerContent.querySelectorAll('table').forEach((table) => {
+    if (table.parentElement?.classList.contains('table-wrap')) return;
+    const columnCount = Math.max(
+      1,
+      ...Array.from(table.rows, (row) => (
+        Array.from(row.cells).reduce((count, cell) => count + Math.max(1, cell.colSpan), 0)
+      )),
+    );
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-wrap';
+    wrapper.style.setProperty('--table-column-count', String(columnCount));
+    wrapper.setAttribute('role', 'region');
+    wrapper.setAttribute('aria-label', `表格，共 ${columnCount} 列，可横向滚动`);
+    wrapper.tabIndex = 0;
+    table.before(wrapper);
+    wrapper.append(table);
+  });
+}
+
 async function enhanceRenderedContent() {
+  enhanceRenderedTables();
   const diagramBlocks = [...elements.viewerContent.querySelectorAll('pre > code.language-mermaid')];
   for (const code of diagramBlocks) {
     const diagram = document.createElement('div');
