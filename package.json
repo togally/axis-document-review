@@ -12,7 +12,7 @@
     "prestart": "npm run build:web",
     "start": "node src/cli.mjs",
     "pretest": "npm run build:web",
-    "test": "node tests/document-review.test.mjs && node tests/ui-regression.test.mjs"
+    "test": "node tests/document-review.test.mjs && node tests/document-reference.test.mjs && node tests/ui-regression.test.mjs"
   },
   "dependencies": {
     "ali-oss": "^6.23.0",

@@ -61,7 +61,10 @@ assert.match(css, /\.viewer-panel\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidde
 assert.match(css, /\.viewer-content\s*\{[^}]*overflow-y:\s*auto[^}]*overscroll-behavior:\s*contain/s);
 assert.match(browserSource, /querySelectorAll\(['"]table['"]\)/);
 assert.match(browserSource, /className\s*=\s*['"]table-wrap['"]/);
-assert.match(browserSource, /async function enhanceRenderedContent\(\)\s*\{\s*enhanceRenderedTables\(\)/);
+assert.match(
+  browserSource,
+  /async function enhanceRenderedContent\(\)\s*\{\s*hideRenderedAuthoringMetadata\(\);\s*enhanceRenderedTables\(\)/,
+);
 assert.match(browserSource, /table\.before\(wrapper\)[^]*wrapper\.append\(table\)/);
 assert.match(browserSource, /row\.cells[^]*cell\.colSpan/);
 assert.match(browserSource, /--table-column-count/);
@@ -100,6 +103,14 @@ assert.match(browserSource, /extractDocumentTitle/);
 assert.match(browserSource, /hydrateDocumentTitles/);
 assert.match(browserSource, /document-title/);
 assert.match(browserSource, /document-link/);
+assert.match(browserSource, /resolveProjectDocumentPath/);
+assert.match(browserSource, /state\.selectedCurrentDocument\?\.path/);
+assert.match(browserSource, /compactDocumentLocator/);
+assert.match(browserSource, /compactEvidencePaths/);
+assert.match(browserSource, /isAuthoringMetadataText/);
+assert.match(browserSource, /hideRenderedAuthoringMetadata/);
+assert.match(browserSource, /code\.title\s*=\s*compact/);
+assert.doesNotMatch(browserSource, /code\.title\s*=\s*original/);
 assert.match(browserSource, /requestFullscreen/);
 assert.match(browserSource, /fullscreenchange/);
 assert.match(browserSource, /catch \(error\) \{[\s\S]*setFallbackFullscreen\(true\)/);

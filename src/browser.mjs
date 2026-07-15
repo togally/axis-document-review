@@ -2,6 +2,12 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
 import { marked } from 'marked';
 import mermaid from 'mermaid';
+import {
+  compactDocumentLocator,
+  compactEvidencePaths,
+  isAuthoringMetadataText,
+  resolveProjectDocumentPath,
+} from './document-reference.mjs';
 
 marked.setOptions({ gfm: true, breaks: false });
 mermaid.initialize({
@@ -104,6 +110,7 @@ function enhanceRenderedTables() {
 }
 
 async function enhanceRenderedContent() {
+  hideRenderedAuthoringMetadata();
   enhanceRenderedTables();
   const diagramBlocks = [...elements.viewerContent.querySelectorAll('pre > code.language-mermaid')];
   for (const code of diagramBlocks) {
@@ -122,11 +129,28 @@ async function enhanceRenderedContent() {
     hljs.highlightElement(code);
   });
   enhanceDocumentLinks();
+  compactRenderedEvidencePaths();
+}
+
+function hideRenderedAuthoringMetadata() {
+  elements.viewerContent.querySelectorAll('blockquote').forEach((blockquote) => {
+    if (isAuthoringMetadataText(blockquote.textContent)) blockquote.remove();
+  });
 }
 
 function referencedDocument(reference) {
-  const normalized = reference.trim().replace(/^\.\//, '').replaceAll('\\', '/').split('#', 1)[0];
-  return state.selectedProject?.project.documents.find((documentRecord) => documentRecord.path === normalized) ?? null;
+  const documents = state.selectedProject?.project.documents ?? [];
+  const currentDocumentPath = state.selectedDocument?.is_archive
+    ? state.selectedDocument.canonical_path
+    : state.selectedCurrentDocument?.path ?? state.selectedDocument?.path;
+  const resolvedPath = resolveProjectDocumentPath(
+    reference,
+    currentDocumentPath,
+    documents.map((documentRecord) => documentRecord.path),
+  );
+  return resolvedPath
+    ? documents.find((documentRecord) => documentRecord.path === resolvedPath) ?? null
+    : null;
 }
 
 function connectDocumentLink(link, documentRecord) {
@@ -156,6 +180,18 @@ function enhanceDocumentLinks() {
   elements.viewerContent.querySelectorAll('a[href]:not([data-document-target])').forEach((link) => {
     const documentRecord = referencedDocument(link.getAttribute('href'));
     if (documentRecord) connectDocumentLink(link, documentRecord);
+  });
+}
+
+function compactRenderedEvidencePaths() {
+  elements.viewerContent.querySelectorAll('code:not(pre code)').forEach((code) => {
+    if (code.closest('[data-document-target]')) return;
+    const original = code.textContent;
+    const compact = compactEvidencePaths(original);
+    if (compact === original) return;
+    code.textContent = compact;
+    code.title = compact;
+    code.classList.add('compact-evidence');
   });
 }
 
@@ -567,18 +603,15 @@ function renderHistoryPanel() {
 }
 
 async function renderViewer(documentRecord, content) {
-  elements.viewerPath.textContent = documentRecord.is_archive
-    ? `${documentRecord.bucket} / ${documentRecord.organizationId} / ${documentRecord.projectSlug} / 历史 / ${documentRecord.canonical_path}`
-    : `${documentRecord.bucket} / ${documentRecord.organizationId} / ${documentRecord.projectSlug} / ${documentRecord.path}`;
+  const locator = compactDocumentLocator(documentRecord.is_archive
+    ? documentRecord.canonical_path
+    : documentRecord.path);
+  elements.viewerPath.textContent = documentRecord.is_archive ? `历史 / ${locator}` : locator;
   elements.viewerTitle.textContent = documentRecord.is_archive
     ? `历史版本 · r${documentRecord.source_revision || '未知'}`
     : documentRecord.name;
   elements.viewerSource.textContent = documentRecord.source_label;
-  elements.viewerMeta.innerHTML = `
-    <span>${escapeHtml(documentRecord.mediaType)}</span>
-    <span>${formatBytes(documentRecord.size)}</span>
-    <span>${formatDate(documentRecord.updatedAt)}</span>
-  `;
+  elements.viewerMeta.innerHTML = '';
   elements.archiveBanner.hidden = !documentRecord.is_archive;
   if (documentRecord.is_archive) {
     elements.archiveBannerText.textContent = `${documentRecord.change_reason || '文档修订存档'} · ${formatDate(documentRecord.archived_at)} · ${documentRecord.content_sha256?.slice(0, 12) || '无哈希'}`;
